@@ -524,16 +524,20 @@
   });
 
   document.getElementById("csv").addEventListener("click", function(){
+    var only = (view === "all") ? null : view;
     var rows = [["Room","Item","Note","Asking price (EUR)","Where it goes"]];
     state.rooms.forEach(function(r){ r.items.forEach(function(i){
       if(!i.name.trim()) return;
+      if (only && i.status !== only) return;
       var lab = STATUSES.filter(function(s){return s.id===i.status;})[0].label;
       rows.push([r.name, i.name, i.note, hasPrice(i) ? amount(i) : "", lab]);
     });});
+    if (rows.length === 1){ alert("Nothing to export — no items in this view yet."); return; }
     var csv = rows.map(function(r){
       return r.map(function(c){ return '"' + String(c).replace(/"/g,'""') + '"'; }).join(",");
     }).join("\r\n");
-    download("house-contents-" + stamp() + ".csv", "\ufeff"+csv, "text/csv");
+    var tag = only ? "-" + only : "";
+    download("house-contents" + tag + "-" + stamp() + ".csv", "\ufeff"+csv, "text/csv");
   });
 
   var file = document.getElementById("file");
