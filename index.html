@@ -86,9 +86,9 @@
   .mrow{display:flex;gap:.5rem;align-items:center;margin-top:.9rem;flex-wrap:wrap}
   .mrow .spacer{flex:1}
 
-  .room{margin:1.75rem 0 0}
+  .room{margin:2.25rem 0 0}
   .room-head{display:flex;align-items:baseline;gap:.6rem;border-bottom:1px solid var(--rule);padding-bottom:.35rem}
-  .room-head h2{font-size:1.15rem;margin:0;font-weight:600}
+  .room-head h2{font-size:1.45rem;margin:0;font-weight:600;letter-spacing:-.01em}
   .room-head .count{color:var(--muted);font-size:.85rem;font-family:system-ui,sans-serif}
   .room-head .spacer{flex:1}
   table{width:100%;border-collapse:collapse}
@@ -257,6 +257,14 @@
     var n = parseFloat(String(item.price||"").replace(/[^0-9.,-]/g,"").replace(",","."));
     return isFinite(n) ? n : 0;
   }
+  // A typed 0 is a decision ("free"), not a blank. Keep the two apart.
+  function hasPrice(item){
+    if (!priced(item.status)) return false;
+    var raw = String(item.price == null ? "" : item.price).trim();
+    if (!raw) return false;
+    var n = parseFloat(raw.replace(/[^0-9.,-]/g,"").replace(",","."));
+    return isFinite(n);
+  }
   function money(n){
     return "€" + n.toLocaleString("en-GB",{minimumFractionDigits:0, maximumFractionDigits:2});
   }
@@ -335,8 +343,12 @@
       tbl.innerHTML = "<thead><tr><th>Item</th><th class='note'>Note</th><th class='price'>Asking price</th><th>Where it goes</th><th class='act no-print'></th></tr></thead>";
       var tb = document.createElement("tbody");
 
-      // always keep one blank row at the end
-      if (!room.items.length || room.items[room.items.length-1].name.trim()) room.items.push(blankItem());
+      // Exactly one blank row, always at the bottom. Deleting or clearing an item
+      // can otherwise leave gaps part-way down the list.
+      room.items = room.items.filter(function(i){
+        return i.name.trim() || String(i.note||"").trim() || String(i.price||"").trim();
+      });
+      room.items.push(blankItem());
 
       room.items.forEach(function(item){ tb.appendChild(itemRow(room,item)); });
       tbl.appendChild(tb);
@@ -451,7 +463,7 @@
         tr.appendChild(a); tr.appendChild(b);
         if (withPrice){
           var c2 = el("td","price");
-          c2.textContent = amount(i) ? money(amount(i)) : "";
+          c2.textContent = hasPrice(i) ? money(amount(i)) : "";
           c2.style.padding=".45rem .5rem";
           tr.appendChild(c2);
         }
@@ -516,7 +528,7 @@
     state.rooms.forEach(function(r){ r.items.forEach(function(i){
       if(!i.name.trim()) return;
       var lab = STATUSES.filter(function(s){return s.id===i.status;})[0].label;
-      rows.push([r.name, i.name, i.note, amount(i) ? amount(i) : "", lab]);
+      rows.push([r.name, i.name, i.note, hasPrice(i) ? amount(i) : "", lab]);
     });});
     var csv = rows.map(function(r){
       return r.map(function(c){ return '"' + String(c).replace(/"/g,'""') + '"'; }).join(",");
