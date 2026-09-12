@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>House contents</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#23211d">
+<meta name="description" content="Room-by-room inventory for the house sale.">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Contents">
+<style>
+  :root{
+    --paper:#fbfaf7;
+    --ink:#23211d;
+    --muted:#6f6a62;
+    --rule:#ddd8cf;
+    --panel:#ffffff;
+    --sale:#1f6f52;
+    --buyer:#8a5a12;
+    --uk:#1b4f8c;
+    --undecided:#6f6a62;
+    --away:#8b3a3a;
+    --focus:#1b4f8c;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font:16px/1.5 "Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    padding:0 0 5rem;
+  }
+  header{
+    border-bottom:1px solid var(--rule);
+    padding:1.6rem 1.25rem 1.2rem;
+    max-width:1000px;
+    margin:0 auto;
+  }
+  h1{font-size:1.6rem;margin:0 0 .3rem;font-weight:600;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:.92rem;margin:0}
+  main{max-width:1000px;margin:0 auto;padding:0 1.25rem}
+  .bar{
+    display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;
+    padding:1rem 0;border-bottom:1px solid var(--rule);
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  .bar .spacer{flex:1}
+  button,select,input[type=text]{
+    font:inherit;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    font-size:.9rem;
+    padding:.45rem .6rem;
+    border:1px solid var(--rule);
+    border-radius:3px;
+    background:var(--panel);
+    color:var(--ink);
+  }
+  button{cursor:pointer}
+  button:hover{border-color:#b9b2a6}
+  button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  button.primary:hover{background:#000}
+  button.link{border:0;background:none;color:var(--muted);padding:.3rem .35rem}
+  button.link:hover{color:var(--away);text-decoration:underline}
+  :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+  button.pill{border-radius:20px;font-size:.82rem;padding:.35rem .75rem;color:var(--muted)}
+  button.pill[data-s="ok"]{color:var(--sale);border-color:#bcd8cb}
+  button.pill[data-s="busy"]{color:var(--uk);border-color:#c3d3e6}
+  button.pill[data-s="bad"]{color:var(--away);border-color:#e2c3c3}
+
+  .modal{position:fixed;inset:0;background:rgba(35,33,29,.4);display:flex;align-items:center;
+         justify-content:center;padding:1.25rem;z-index:50}
+  .modal .sheet{background:var(--panel);border:1px solid var(--rule);border-radius:6px;
+         padding:1.5rem;width:100%;max-width:26rem;box-shadow:0 12px 40px rgba(35,33,29,.18)}
+  .sheet h3{margin:0 0 .4rem;font-size:1.2rem;font-weight:600}
+  .sheet .mnote{margin:0 0 1.1rem;color:var(--muted);font-size:.9rem}
+  .sheet label{display:block;font-family:system-ui,sans-serif;font-size:.78rem;color:var(--muted);margin:.8rem 0 .25rem}
+  .sheet input{width:100%}
+  .sheet .mstat{font-family:system-ui,sans-serif;font-size:.85rem;color:var(--muted);margin:1rem 0 .2rem;min-height:1.2em}
+  .sheet .mstat[data-s="bad"]{color:var(--away)}
+  .sheet .mstat[data-s="ok"]{color:var(--sale)}
+  .mrow{display:flex;gap:.5rem;align-items:center;margin-top:.9rem;flex-wrap:wrap}
+  .mrow .spacer{flex:1}
+
+  .room{margin:1.75rem 0 0}
+  .room-head{display:flex;align-items:baseline;gap:.6rem;border-bottom:1px solid var(--rule);padding-bottom:.35rem}
+  .room-head h2{font-size:1.15rem;margin:0;font-weight:600}
+  .room-head .count{color:var(--muted);font-size:.85rem;font-family:system-ui,sans-serif}
+  .room-head .spacer{flex:1}
+  table{width:100%;border-collapse:collapse}
+  td,th{padding:.4rem .5rem;text-align:left;vertical-align:middle}
+  th{font-family:system-ui,sans-serif;font-size:.78rem;color:var(--muted);font-weight:500;border-bottom:1px solid var(--rule)}
+  tbody tr{border-bottom:1px solid #efece6}
+  td.item{width:36%}
+  td.note{width:20%;color:var(--muted)}
+  td.price{width:13%}
+  td.status{width:23%}
+  td.act{width:5%;text-align:right}
+  th.price,td.price{text-align:right}
+  td.price input{text-align:right;font-variant-numeric:tabular-nums}
+  td.price .na{color:#c9c3b8;font-size:.85rem;padding-right:.4rem}
+  tr.total td{border-top:1px solid var(--rule);padding-top:.5rem;font-weight:600}
+  tr.total td.label{color:var(--muted);font-weight:400;font-family:system-ui,sans-serif;font-size:.85rem}
+  td input[type=text]{width:100%;border:1px solid transparent;background:transparent;padding:.35rem .4rem;font-family:inherit;font-size:1rem}
+  td input[type=text]:hover{border-color:#e6e1d8}
+  td input[type=text]:focus{border-color:var(--rule);background:#fff}
+  td.note input{font-size:.88rem}
+  select.status-sel{width:100%;font-size:.85rem}
+  select.status-sel[data-s="included"]{color:var(--sale)}
+  select.status-sel[data-s="buyer"]{color:var(--buyer)}
+  select.status-sel[data-s="uk"]{color:var(--uk)}
+  select.status-sel[data-s="undecided"]{color:var(--undecided)}
+  select.status-sel[data-s="away"]{color:var(--away)}
+
+  .tally{display:flex;flex-wrap:wrap;gap:1.1rem;padding:.9rem 0;font-family:system-ui,sans-serif;font-size:.85rem;color:var(--muted)}
+  .tally b{color:var(--ink);font-weight:600}
+
+  .report-head{margin:1.5rem 0 .4rem}
+  .report-head h2{margin:0;font-size:1.3rem}
+  .report-meta{color:var(--muted);font-size:.85rem;font-family:system-ui,sans-serif}
+  .hint{color:var(--muted);font-size:.88rem;font-style:italic;padding:.8rem 0}
+  .empty{color:var(--muted);padding:.6rem .5rem;font-style:italic}
+
+  @media (max-width:640px){
+    td.note,th.note{display:none}
+    td.item{width:42%}
+    td.price{width:20%}
+    td.status{width:33%}
+  }
+  @media print{
+    @page{margin:18mm}
+    body{background:#fff;font-size:11pt}
+    .bar,.no-print,td.act,th.act{display:none !important}
+    header{border:0;padding:0 0 .5rem}
+    td input[type=text]{border:0;padding:0}
+    select.status-sel{border:0;background:none;-webkit-appearance:none;appearance:none;padding:0}
+    tbody tr{border-bottom:1px solid #eee}
+    .room{break-inside:auto}
+    .room-head{break-after:avoid}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>House contents</h1>
+  <p class="sub" id="sub">Room by room, and where each thing ends up.</p>
+</header>
+
+<main>
+  <div class="bar no-print">
+    <label for="view" class="sr">Show</label>
+    <select id="view">
+      <option value="all">All rooms</option>
+      <option value="included">Report — Included in sale</option>
+      <option value="buyer">Report — Offered to the buyer</option>
+      <option value="uk">Report — Taking to the UK</option>
+      <option value="undecided">Report — Undecided</option>
+      <option value="away">Report — Give away or sell elsewhere</option>
+    </select>
+    <button id="addRoom">Add room</button>
+    <span class="spacer"></span>
+    <button id="syncPill" class="pill" title="Sync settings">Sync off</button>
+    <button id="print">Print</button>
+    <button id="save">Save backup</button>
+    <button id="load">Open backup</button>
+    <button id="csv">Export CSV</button>
+  </div>
+
+  <div id="tally" class="tally"></div>
+  <div id="stage"></div>
+  <p class="hint no-print" id="hint"></p>
+</main>
+
+<input type="file" id="file" accept="application/json,.json" hidden>
+
+<div id="modal" class="modal no-print" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <h3 id="mTitle">Sync between devices</h3>
+    <p class="mnote">Your list is stored on your own Cloudflare worker, so the same inventory opens on the phone and the laptop.</p>
+    <label for="mUrl">Worker address</label>
+    <input type="url" id="mUrl" placeholder="https://crapps-sync.crapps.workers.dev" autocomplete="off" spellcheck="false">
+    <label for="mToken">Token</label>
+    <input type="password" id="mToken" placeholder="your sync token" autocomplete="off">
+    <p class="mstat" id="mStat"></p>
+    <div class="mrow">
+      <button id="mConnect" class="primary">Connect</button>
+      <button id="mSyncNow">Sync now</button>
+      <span class="spacer"></span>
+      <button id="mForget" class="link">Turn off</button>
+      <button id="mClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var STATUSES = [
+    {id:"included",   label:"Included in sale"},
+    {id:"buyer",      label:"Offered to the buyer"},
+    {id:"uk",         label:"Taking to the UK"},
+    {id:"undecided",  label:"Undecided"},
+    {id:"away",       label:"Give away / sell elsewhere"}
+  ];
+  var KEY = "house-contents-v1";
+  var SYNC_APP   = "house-contents";        // must be in the worker's ALLOWED_KEYS
+  var K_URL      = "hc_sync_url";
+  var K_TOKEN    = "hc_sync_token";
+  var K_REV      = "hc_sync_rev";
+  var K_DIRTY    = "hc_sync_dirty";
+  var K_DEVICE   = "hc_device";
+  var DEFAULT_URL = "https://crapps-sync.crapps.workers.dev";
+  var state = null, view = "all";
+
+  /* ---------- storage: artifact host, then browser, then memory ---------- */
+  var store = (function(){
+    var host = (typeof window !== "undefined" && window.storage) ? window.storage : null;
+    var mem = null;
+    return {
+      get: function(){
+        if (host) return host.get(KEY).then(function(r){ return r && r.value ? r.value : null; })
+                             .catch(function(){ return null; });
+        try { return Promise.resolve(localStorage.getItem(KEY)); }
+        catch(e){ return Promise.resolve(mem); }
+      },
+      set: function(v){
+        mem = v;
+        if (host) return host.set(KEY, v).catch(function(){});
+        try { localStorage.setItem(KEY, v); } catch(e){}
+        return Promise.resolve();
+      }
+    };
+  })();
+
+  function uid(){ return Math.random().toString(36).slice(2,9); }
+
+  function starter(){
+    var rooms = ["Kitchen","Living room","Main bedroom","Second bedroom",
+                 "Bathrooms","Terrace & garden","Garage / store","Utility & fixtures"];
+    return { rooms: rooms.map(function(n){
+      return { id: uid(), name: n, items: [ blankItem() ] };
+    }) };
+  }
+  function blankItem(){ return { id: uid(), name:"", note:"", price:"", status:"undecided" }; }
+
+  // Only these two statuses involve money changing hands.
+  function priced(status){ return status === "buyer" || status === "away"; }
+  function amount(item){
+    if (!priced(item.status)) return 0;
+    var n = parseFloat(String(item.price||"").replace(/[^0-9.,-]/g,"").replace(",","."));
+    return isFinite(n) ? n : 0;
+  }
+  function money(n){
+    return "€" + n.toLocaleString("en-GB",{minimumFractionDigits:0, maximumFractionDigits:2});
+  }
+
+  function save(){
+    state.updated = Date.now();
+    store.set(JSON.stringify(state));
+    ls(K_DIRTY, "1");
+    schedulePush();
+  }
+
+  /* ---------- rendering ---------- */
+  var stage = document.getElementById("stage");
+
+  function render(){
+    stage.innerHTML = "";
+    if (view === "all") renderAll(); else renderReport(view);
+    renderTally();
+    document.getElementById("hint").textContent = view === "all"
+      ? "Type in the last row of a room to start a new line. Everything saves as you go."
+      : "Printing now gives you just this list.";
+  }
+
+  function renderTally(){
+    var counts = {}, sums = {}; STATUSES.forEach(function(s){ counts[s.id]=0; sums[s.id]=0; });
+    var total = 0;
+    state.rooms.forEach(function(r){ r.items.forEach(function(i){
+      if(!i.name.trim()) return;
+      counts[i.status] = (counts[i.status]||0)+1;
+      sums[i.status] = (sums[i.status]||0) + amount(i);
+      total++;
+    });});
+    var t = document.getElementById("tally");
+    t.innerHTML = "";
+    STATUSES.forEach(function(s){
+      var span = document.createElement("span");
+      var extra = (priced(s.id) && sums[s.id]) ? " · <b>" + money(sums[s.id]) + "</b>" : "";
+      span.innerHTML = "<b>" + counts[s.id] + "</b> " + s.label.toLowerCase() + extra;
+      t.appendChild(span);
+    });
+    var tot = document.createElement("span");
+    tot.innerHTML = "<b>" + total + "</b> items listed";
+    t.appendChild(tot);
+  }
+
+  function renderAll(){
+    state.rooms.forEach(function(room){
+      var wrap = el("section","room");
+      var head = el("div","room-head");
+
+      var h = document.createElement("h2");
+      h.contentEditable = "true";
+      h.spellcheck = false;
+      h.textContent = room.name;
+      h.addEventListener("blur", function(){
+        room.name = h.textContent.trim() || "Untitled room"; h.textContent = room.name; save(); renderTally();
+      });
+      head.appendChild(h);
+
+      var live = room.items.filter(function(i){return i.name.trim();}).length;
+      var c = el("span","count"); c.textContent = live + (live===1?" item":" items");
+      head.appendChild(c);
+      head.appendChild(el("span","spacer"));
+
+      var del = document.createElement("button");
+      del.className = "link no-print"; del.textContent = "Remove room";
+      del.addEventListener("click", function(){
+        if (live && !confirm("Remove " + room.name + " and its " + live + " item(s)?")) return;
+        state.rooms = state.rooms.filter(function(r){ return r.id !== room.id; });
+        save(); render();
+      });
+      head.appendChild(del);
+      wrap.appendChild(head);
+
+      var tbl = document.createElement("table");
+      tbl.innerHTML = "<thead><tr><th>Item</th><th class='note'>Note</th><th class='price'>Asking price</th><th>Where it goes</th><th class='act no-print'></th></tr></thead>";
+      var tb = document.createElement("tbody");
+
+      // always keep one blank row at the end
+      if (!room.items.length || room.items[room.items.length-1].name.trim()) room.items.push(blankItem());
+
+      room.items.forEach(function(item){ tb.appendChild(itemRow(room,item)); });
+      tbl.appendChild(tb);
+      wrap.appendChild(tbl);
+      stage.appendChild(wrap);
+    });
+  }
+
+  function itemRow(room,item){
+    var tr = document.createElement("tr");
+
+    var tdI = el("td","item");
+    var name = document.createElement("input");
+    name.type="text"; name.value=item.name; name.placeholder="Add an item…";
+    name.addEventListener("input", function(){
+      var wasBlank = !item.name.trim();
+      item.name = name.value; save();
+      if (wasBlank && item.name.trim()){ render(); focusLast(room.id); }
+      else renderTally();
+    });
+    tdI.appendChild(name); tr.appendChild(tdI);
+
+    var tdN = el("td","note");
+    var note = document.createElement("input");
+    note.type="text"; note.value=item.note; note.placeholder="—";
+    note.addEventListener("input", function(){ item.note = note.value; save(); });
+    tdN.appendChild(note); tr.appendChild(tdN);
+
+    var tdP = el("td","price");
+    function paintPrice(){
+      tdP.innerHTML = "";
+      if (!priced(item.status)){
+        var na = el("span","na"); na.textContent = "—";
+        tdP.appendChild(na);
+        return;
+      }
+      var p = document.createElement("input");
+      p.type = "text"; p.inputMode = "decimal";
+      p.value = item.price || ""; p.placeholder = "€";
+      p.setAttribute("aria-label","Asking price");
+      p.addEventListener("input", function(){ item.price = p.value; save(); renderTally(); });
+      tdP.appendChild(p);
+    }
+    paintPrice();
+    tr.appendChild(tdP);
+
+    var tdS = el("td","status");
+    var sel = document.createElement("select");
+    sel.className="status-sel";
+    STATUSES.forEach(function(s){
+      var o=document.createElement("option"); o.value=s.id; o.textContent=s.label; sel.appendChild(o);
+    });
+    sel.value = item.status; sel.dataset.s = item.status;
+    sel.addEventListener("change", function(){
+      item.status = sel.value; sel.dataset.s = sel.value;
+      if (!priced(item.status)) item.price = "";
+      paintPrice(); save(); renderTally();
+    });
+    tdS.appendChild(sel); tr.appendChild(tdS);
+
+    var tdA = el("td","act no-print");
+    if (item.name.trim()){
+      var x = document.createElement("button");
+      x.className="link"; x.textContent="×"; x.title="Delete item";
+      x.setAttribute("aria-label","Delete " + item.name);
+      x.addEventListener("click", function(){
+        room.items = room.items.filter(function(i){ return i.id !== item.id; });
+        save(); render();
+      });
+      tdA.appendChild(x);
+    }
+    tr.appendChild(tdA);
+    return tr;
+  }
+
+  function focusLast(roomId){
+    var rooms = stage.querySelectorAll("section.room");
+    var idx = state.rooms.findIndex(function(r){return r.id===roomId;});
+    if (idx < 0 || !rooms[idx]) return;
+    var inputs = rooms[idx].querySelectorAll("td.item input");
+    var prev = inputs[inputs.length-2];
+    if (prev){ prev.focus(); prev.setSelectionRange(prev.value.length, prev.value.length); }
+  }
+
+  function renderReport(statusId){
+    var meta = STATUSES.filter(function(s){return s.id===statusId;})[0];
+    var head = el("div","report-head");
+    var h = document.createElement("h2"); h.textContent = meta.label;
+    head.appendChild(h);
+    var m = el("div","report-meta");
+    head.appendChild(m);
+    stage.appendChild(head);
+
+    var n = 0, grand = 0, withPrice = priced(statusId);
+    state.rooms.forEach(function(room){
+      var items = room.items.filter(function(i){ return i.name.trim() && i.status===statusId; });
+      if (!items.length) return;
+      n += items.length;
+      items.forEach(function(i){ grand += amount(i); });
+      var sec = el("section","room");
+      var rh = el("div","room-head");
+      var rh2 = document.createElement("h2"); rh2.textContent = room.name; rh.appendChild(rh2);
+      var c = el("span","count"); c.textContent = items.length + (items.length===1?" item":" items");
+      rh.appendChild(c);
+      sec.appendChild(rh);
+      var tbl = document.createElement("table");
+      var tb = document.createElement("tbody");
+      items.forEach(function(i){
+        var tr = document.createElement("tr");
+        var a = el("td","item"); a.textContent = i.name; a.style.padding=".45rem .5rem";
+        var b = el("td","note"); b.textContent = i.note || ""; b.style.padding=".45rem .5rem";
+        tr.appendChild(a); tr.appendChild(b);
+        if (withPrice){
+          var c2 = el("td","price");
+          c2.textContent = amount(i) ? money(amount(i)) : "";
+          c2.style.padding=".45rem .5rem";
+          tr.appendChild(c2);
+        }
+        tb.appendChild(tr);
+      });
+      tbl.appendChild(tb); sec.appendChild(tbl);
+      stage.appendChild(sec);
+    });
+
+    if (withPrice && n){
+      var tot = document.createElement("table");
+      var ttb = document.createElement("tbody");
+      var trt = document.createElement("tr"); trt.className = "total";
+      var l = el("td","item label"); l.textContent = "Total";
+      var sp = el("td","note");
+      var v = el("td","price"); v.textContent = money(grand);
+      trt.appendChild(l); trt.appendChild(sp); trt.appendChild(v);
+      ttb.appendChild(trt); tot.appendChild(ttb);
+      stage.appendChild(tot);
+    }
+
+    m.textContent = n + (n===1?" item":" items")
+      + (withPrice && grand ? " · " + money(grand) : "")
+      + " · " + new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});
+    if (!n){
+      var p = el("p","empty");
+      p.textContent = "Nothing marked “" + meta.label + "” yet.";
+      stage.appendChild(p);
+    }
+  }
+
+  function el(tag,cls){ var e=document.createElement(tag); if(cls) e.className=cls; return e; }
+
+  /* ---------- toolbar ---------- */
+  document.getElementById("view").addEventListener("change", function(e){
+    view = e.target.value; render();
+    document.getElementById("sub").textContent = view==="all"
+      ? "Room by room, and where each thing ends up."
+      : "Filtered list — ready to print or send.";
+  });
+
+  document.getElementById("addRoom").addEventListener("click", function(){
+    var name = prompt("Name of the room or area:");
+    if (name === null) return;
+    state.rooms.push({ id:uid(), name:(name.trim()||"Untitled room"), items:[blankItem()] });
+    save();
+    if (view !== "all"){ view="all"; document.getElementById("view").value="all"; }
+    render();
+    var last = stage.querySelectorAll("section.room");
+    if (last.length) last[last.length-1].scrollIntoView({behavior:"smooth",block:"center"});
+  });
+
+  document.getElementById("print").addEventListener("click", function(){ window.print(); });
+
+  document.getElementById("save").addEventListener("click", function(){
+    download("house-contents-" + stamp() + ".json",
+             JSON.stringify(state,null,2), "application/json");
+  });
+
+  document.getElementById("csv").addEventListener("click", function(){
+    var rows = [["Room","Item","Note","Asking price (EUR)","Where it goes"]];
+    state.rooms.forEach(function(r){ r.items.forEach(function(i){
+      if(!i.name.trim()) return;
+      var lab = STATUSES.filter(function(s){return s.id===i.status;})[0].label;
+      rows.push([r.name, i.name, i.note, amount(i) ? amount(i) : "", lab]);
+    });});
+    var csv = rows.map(function(r){
+      return r.map(function(c){ return '"' + String(c).replace(/"/g,'""') + '"'; }).join(",");
+    }).join("\r\n");
+    download("house-contents-" + stamp() + ".csv", "\ufeff"+csv, "text/csv");
+  });
+
+  var file = document.getElementById("file");
+  document.getElementById("load").addEventListener("click", function(){ file.click(); });
+  file.addEventListener("change", function(){
+    var f = file.files && file.files[0]; if(!f) return;
+    var r = new FileReader();
+    r.onload = function(){
+      try {
+        var data = JSON.parse(r.result);
+        if (!data || !Array.isArray(data.rooms)) throw new Error("bad");
+        state = data; save(); render();
+      } catch(e){
+        alert("That file isn't a contents backup. Choose a .json file saved from this page.");
+      }
+      file.value = "";
+    };
+    r.readAsText(f);
+  });
+
+  function stamp(){ return new Date().toISOString().slice(0,10); }
+  function download(name, text, type){
+    var blob = new Blob([text], {type:type});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+
+  /* ---------- sync (Cloudflare worker, same API as the other crapps apps) ----------
+     GET  /v1/doc/<key>                     -> 404, or { rev, updated, device, data }
+     PUT  /v1/doc/<key>  { data, baseRev }  -> { rev }, or 409 with the current doc
+     Whole-document, last write wins, with a prompt when two devices have both moved on. */
+
+  function ls(k,v){
+    try { if (v === undefined) return localStorage.getItem(k);
+          if (v === null) localStorage.removeItem(k); else localStorage.setItem(k,v); }
+    catch(e){ return null; }
+  }
+  function syncCfg(){
+    var url = ls(K_URL), token = ls(K_TOKEN);
+    return (url && token) ? { url:url.replace(/\/+$/,""), token:token } : null;
+  }
+  function deviceId(){
+    var d = ls(K_DEVICE);
+    if (!d){ d = (navigator.platform || "browser").split(" ")[0].toLowerCase() + "-" + uid(); ls(K_DEVICE, d); }
+    return d;
+  }
+  function localRev(){ return parseInt(ls(K_REV) || "0", 10) || 0; }
+  function isDirty(){ return ls(K_DIRTY) === "1"; }
+
+  function headers(cfg){
+    return { "Content-Type":"application/json", "Authorization":"Bearer " + cfg.token };
+  }
+  function docUrl(cfg){ return cfg.url + "/v1/doc/" + SYNC_APP; }
+
+  function pill(text, tone){
+    var b = document.getElementById("syncPill");
+    b.textContent = text;
+    if (tone) b.dataset.s = tone; else delete b.dataset.s;
+  }
+  function stat(text, tone){
+    var p = document.getElementById("mStat");
+    p.textContent = text || "";
+    if (tone) p.dataset.s = tone; else delete p.dataset.s;
+  }
+  function whenAgo(ts){
+    if (!ts) return "";
+    var mins = Math.round((Date.now() - ts)/60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return mins + " min ago";
+    return new Date(ts).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
+  }
+
+  function pull(cfg){
+    return fetch(docUrl(cfg), { headers: headers(cfg) }).then(function(res){
+      if (res.status === 404) return null;
+      if (res.status === 401 || res.status === 403) throw new Error("Token rejected");
+      if (!res.ok) throw new Error("Pull failed: " + res.status);
+      return res.json();
+    });
+  }
+
+  function push(cfg, baseRev){
+    return fetch(docUrl(cfg), {
+      method: "PUT",
+      headers: headers(cfg),
+      body: JSON.stringify({ data: state, baseRev: baseRev, device: deviceId() })
+    }).then(function(res){
+      if (res.status === 409) return res.json().then(function(remote){
+        var e = new Error("conflict"); e.remote = remote; throw e;
+      });
+      if (res.status === 401 || res.status === 403) throw new Error("Token rejected");
+      if (res.status === 404) throw new Error("Worker doesn't know the key “" + SYNC_APP + "”");
+      if (!res.ok) throw new Error("Push failed: " + res.status);
+      return res.json();
+    }).then(function(r){
+      if (r && r.rev) ls(K_REV, String(r.rev));
+      ls(K_DIRTY, null);
+      return r;
+    });
+  }
+
+  function adopt(remote){
+    if (!remote || !remote.data || !Array.isArray(remote.data.rooms)) return false;
+    state = remote.data;
+    store.set(JSON.stringify(state));
+    ls(K_REV, String(remote.rev || 0));
+    ls(K_DIRTY, null);
+    render();
+    return true;
+  }
+
+  var syncing = false, pushTimer = null, lastSync = 0;
+
+  function schedulePush(){
+    if (!syncCfg()) return;
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(function(){ syncNow("auto"); }, 2000);
+  }
+
+  function syncNow(reason){
+    var cfg = syncCfg();
+    if (!cfg){ pill("Sync off"); return Promise.resolve(); }
+    if (syncing) return Promise.resolve();
+    syncing = true;
+    pill("Syncing…","busy");
+    if (reason !== "auto") stat("Talking to the worker…");
+
+    return pull(cfg).then(function(remote){
+      var rev = localRev();
+
+      if (!remote) return push(cfg, rev);                       // nothing up there yet
+      if (remote.rev > rev && !isDirty()){ adopt(remote); return null; }   // they're ahead, we're clean
+      if (remote.rev > rev && isDirty()) {                       // both moved on
+        var mine = confirm(
+          "This device and the stored copy have both changed since the last sync.\n\n" +
+          "OK — keep what's on this device and overwrite the stored copy.\n" +
+          "Cancel — take the stored copy and lose this device's unsynced edits."
+        );
+        if (mine) return push(cfg, remote.rev);
+        adopt(remote); return null;
+      }
+      if (isDirty()) return push(cfg, rev);                      // we're ahead
+      return null;                                               // already level
+    }).then(function(){
+      lastSync = Date.now();
+      pill("Synced","ok");
+      if (reason !== "auto") stat("Up to date.","ok");
+    }).catch(function(err){
+      if (err && err.message === "conflict" && err.remote){
+        var mine = confirm("Another device saved first.\n\nOK — overwrite it with this device's list.\nCancel — take the other device's list.");
+        syncing = false;
+        if (mine) return push(cfg, err.remote.rev).then(function(){
+          lastSync = Date.now(); pill("Synced","ok"); if (reason!=="auto") stat("Up to date.","ok");
+        }).catch(function(e2){ pill("Sync error","bad"); stat(e2.message,"bad"); });
+        adopt(err.remote); pill("Synced","ok"); return;
+      }
+      pill("Sync error","bad");
+      stat(err.message, "bad");
+      if (reason === "auto") console.warn("sync:", err.message);
+    }).then(function(){ syncing = false; });
+  }
+
+  /* ---------- sync settings dialog ---------- */
+  var modal = document.getElementById("modal");
+  function openSync(){
+    var cfg = syncCfg();
+    document.getElementById("mUrl").value = ls(K_URL) || DEFAULT_URL;
+    document.getElementById("mToken").value = ls(K_TOKEN) || "";
+    document.getElementById("mConnect").textContent = cfg ? "Save" : "Connect";
+    document.getElementById("mSyncNow").disabled = !cfg;
+    document.getElementById("mForget").hidden = !cfg;
+    stat(cfg ? ("Connected." + (lastSync ? " Last synced " + whenAgo(lastSync) + "." : "")) : "");
+    modal.hidden = false;
+    document.getElementById(cfg ? "mSyncNow" : "mToken").focus();
+  }
+  function closeSync(){ modal.hidden = true; }
+
+  document.getElementById("syncPill").addEventListener("click", openSync);
+  document.getElementById("mClose").addEventListener("click", closeSync);
+  modal.addEventListener("click", function(e){ if (e.target === modal) closeSync(); });
+  document.addEventListener("keydown", function(e){ if (e.key === "Escape" && !modal.hidden) closeSync(); });
+
+  document.getElementById("mConnect").addEventListener("click", function(){
+    var url = document.getElementById("mUrl").value.trim();
+    var token = document.getElementById("mToken").value.trim();
+    if (!/^https:\/\//.test(url)){ stat("The worker address needs to start with https://","bad"); return; }
+    if (!token){ stat("Enter the sync token.","bad"); return; }
+    ls(K_URL, url.replace(/\/+$/,"")); ls(K_TOKEN, token);
+    document.getElementById("mSyncNow").disabled = false;
+    document.getElementById("mForget").hidden = false;
+    document.getElementById("mConnect").textContent = "Save";
+    syncNow("manual");
+  });
+
+  document.getElementById("mSyncNow").addEventListener("click", function(){ syncNow("manual"); });
+
+  document.getElementById("mForget").addEventListener("click", function(){
+    if (!confirm("Stop syncing this device? The list stays on this device and on the worker.")) return;
+    ls(K_URL, null); ls(K_TOKEN, null); ls(K_REV, null);
+    pill("Sync off"); stat("Sync turned off.");
+    document.getElementById("mSyncNow").disabled = true;
+    document.getElementById("mForget").hidden = true;
+    document.getElementById("mConnect").textContent = "Connect";
+  });
+
+  // Pull again when the tab comes back to the front, at most once a minute.
+  document.addEventListener("visibilitychange", function(){
+    if (document.visibilityState === "visible" && syncCfg() && Date.now() - lastSync > 60000) syncNow("auto");
+  });
+
+  /* ---------- boot ---------- */
+  store.get().then(function(raw){
+    try { state = raw ? JSON.parse(raw) : null; } catch(e){ state = null; }
+    if (!state || !Array.isArray(state.rooms) || !state.rooms.length) state = starter();
+    render();
+    if (syncCfg()) syncNow("auto"); else pill("Sync off");
+  });
+})();
+</script>
+<script>
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js').then(function(reg){
+      reg.addEventListener('updatefound', function(){
+        var sw = reg.installing;
+        if (!sw) return;
+        sw.addEventListener('statechange', function(){
+          if (sw.state === 'installed' && navigator.serviceWorker.controller) sw.postMessage('skip-waiting');
+        });
+      });
+    }).catch(function(){});
+    var reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function(){
+      if (reloaded) return; reloaded = true; location.reload();
+    });
+  });
+}
+</script>
+</body>
+</html>
