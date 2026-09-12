@@ -70,6 +70,7 @@
   button.pill[data-s="busy"]{color:var(--uk);border-color:#c3d3e6}
   button.pill[data-s="bad"]{color:var(--away);border-color:#e2c3c3}
 
+  button.cog{padding:.35rem .5rem;color:var(--muted);font-size:.95rem;line-height:1}
   .modal[hidden]{display:none}
   .modal{position:fixed;inset:0;background:rgba(35,33,29,.4);display:flex;align-items:center;
          justify-content:center;padding:1.25rem;z-index:50}
@@ -163,7 +164,8 @@
     </select>
     <button id="addRoom">Add room</button>
     <span class="spacer"></span>
-    <button id="syncPill" class="pill" title="Sync settings">Sync off</button>
+    <button id="syncPill" class="pill" title="Sync now">Sync off</button>
+    <button id="syncCfg" class="cog" title="Sync settings" aria-label="Sync settings">⚙</button>
     <button id="print">Print</button>
     <button id="save">Save backup</button>
     <button id="load">Open backup</button>
@@ -576,10 +578,16 @@
   }
   function docUrl(cfg){ return cfg.url + "/v1/doc/" + SYNC_APP; }
 
+  var lastError = "";
+
   function pill(text, tone){
     var b = document.getElementById("syncPill");
     b.textContent = text;
     if (tone) b.dataset.s = tone; else delete b.dataset.s;
+    b.title = !syncCfg() ? "Set up sync"
+            : tone === "bad" ? (lastError || "Sync failed") + " — click to try again"
+            : lastSync ? "Last synced " + whenAgo(lastSync) + " — click to sync now"
+            : "Sync now";
   }
   function stat(text, tone){
     var p = document.getElementById("mStat");
@@ -667,6 +675,7 @@
       return null;                                               // already level
     }).then(function(){
       lastSync = Date.now();
+      lastError = "";
       pill("Synced","ok");
       if (reason !== "auto") stat("Up to date.","ok");
     }).catch(function(err){
@@ -678,6 +687,7 @@
         }).catch(function(e2){ pill("Sync error","bad"); stat(e2.message,"bad"); });
         adopt(err.remote); pill("Synced","ok"); return;
       }
+      lastError = err.message;
       pill("Sync error","bad");
       stat(err.message, "bad");
       if (reason === "auto") console.warn("sync:", err.message);
@@ -693,13 +703,19 @@
     document.getElementById("mConnect").textContent = cfg ? "Save" : "Connect";
     document.getElementById("mSyncNow").disabled = !cfg;
     document.getElementById("mForget").hidden = !cfg;
-    stat(cfg ? ("Connected." + (lastSync ? " Last synced " + whenAgo(lastSync) + "." : "")) : "");
+    stat(lastError ? lastError
+         : cfg ? ("Connected." + (lastSync ? " Last synced " + whenAgo(lastSync) + "." : ""))
+         : "", lastError ? "bad" : null);
     modal.hidden = false;
     document.getElementById(cfg ? "mSyncNow" : "mToken").focus();
   }
   function closeSync(){ modal.hidden = true; }
 
-  document.getElementById("syncPill").addEventListener("click", openSync);
+  document.getElementById("syncPill").addEventListener("click", function(){
+    if (!syncCfg()) { openSync(); return; }   // nothing to sync with yet
+    syncNow("manual");
+  });
+  document.getElementById("syncCfg").addEventListener("click", openSync);
   document.getElementById("mClose").addEventListener("click", closeSync);
   modal.addEventListener("click", function(e){ if (e.target === modal) closeSync(); });
   document.addEventListener("keydown", function(e){ if (e.key === "Escape" && !modal.hidden) closeSync(); });
