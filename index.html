@@ -10,6 +10,7 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Contents">
 <style>
   :root{
@@ -779,6 +780,17 @@
     var head = el("div","report-head");
     var h = document.createElement("h2"); h.textContent = meta.label; head.appendChild(h);
     var prop = el("div","report-prop"); prop.textContent = "for " + PROPERTY; head.appendChild(prop);
+    var fm = el("div","report-meta");
+    var fcount = 0, fgrand = 0;
+    state.rooms.forEach(function(room){
+      room.items.forEach(function(i){
+        if (i.name.trim() && i.status === view){ fcount++; fgrand += amount(i); }
+      });
+    });
+    fm.textContent = fcount + (fcount===1?" item":" items")
+      + (priced(view) && fgrand ? " · " + money(fgrand) : "")
+      + " · " + new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});
+    head.appendChild(fm);
     cur.body.appendChild(head);
 
     var withPrice = priced(view), grand = 0, n = 0;
@@ -867,9 +879,20 @@
     var head = el("div","report-head");
     var h = document.createElement("h2"); h.textContent = meta.label; head.appendChild(h);
     var prop = el("div","report-prop"); prop.textContent = "for " + PROPERTY; head.appendChild(prop);
+    var withPrice = priced(view);
+    var count = 0, grand = 0;
+    state.rooms.forEach(function(room){
+      room.items.forEach(function(i){
+        if (i.name.trim() && i.status === view){ count++; grand += amount(i); }
+      });
+    });
+    var m = el("div","report-meta");
+    m.textContent = count + (count===1?" item":" items")
+      + (withPrice && grand ? " · " + money(grand) : "")
+      + " · " + new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});
+    head.appendChild(m);
     flow.appendChild(head);
 
-    var withPrice = priced(view);
     state.rooms.forEach(function(room){
       var items = room.items.filter(function(i){ return i.name.trim() && i.status === view; });
       if (!items.length) return;
@@ -927,19 +950,29 @@
       + '.pagedjs_page tr{break-inside:avoid}';
   }
 
+  /* The UMD bundle registers itself as window.PagedModule; older builds and the
+     polyfill use window.Paged. Accept either. */
+  function pagedLib(){
+    var g = window.PagedModule || window.Paged;
+    return (g && g.Previewer) ? g : null;
+  }
+
   var pagedLoading = null;
   function loadPaged(){
-    if (window.Paged && window.Paged.Previewer) return Promise.resolve(true);
+    if (pagedLib()) return Promise.resolve(true);
     if (pagedLoading) return pagedLoading;
     pagedLoading = new Promise(function(resolve){
       var done = false;
-      function finish(ok){ if (done) return; done = true; resolve(ok && !!(window.Paged && window.Paged.Previewer)); }
+      function finish(){ if (done) return; done = true; resolve(!!pagedLib()); }
       var s = document.createElement("script");
       s.src = "pagedjs.min.js";
-      s.onload  = function(){ finish(true); };
-      s.onerror = function(){ finish(false); };
+      s.onload  = finish;
+      s.onerror = function(){ console.warn("pagedjs.min.js failed to load"); finish(); };
       document.head.appendChild(s);
-      setTimeout(function(){ finish(false); }, 3000);   // stalled load must not wedge Print
+      setTimeout(function(){
+        if (!done) console.warn("pagedjs.min.js timed out; using the built-in paginator");
+        finish();
+      }, 5000);
     });
     return pagedLoading;
   }
@@ -954,7 +987,7 @@
       document.body.appendChild(printDoc);
       var blob = new Blob([pageCSS(built.label)], { type:"text/css" });
       var cssUrl = URL.createObjectURL(blob);
-      var prev = new window.Paged.Previewer();
+      var prev = new (pagedLib().Previewer)();
       return prev.preview(built.flow.innerHTML, [cssUrl], printDoc).then(function(){
         URL.revokeObjectURL(cssUrl);
         return true;
