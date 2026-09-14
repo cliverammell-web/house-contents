@@ -86,6 +86,12 @@
   .mrow{display:flex;gap:.5rem;align-items:center;margin-top:.9rem;flex-wrap:wrap}
   .mrow .spacer{flex:1}
 
+  button.fold{border:0;background:none;color:var(--muted);font-size:.8rem;line-height:1;
+              padding:.2rem .3rem;cursor:pointer;width:1.4rem;text-align:left}
+  button.fold:hover{color:var(--ink)}
+  .room.folded table{display:none}
+  .room.folded .room-head{border-bottom-color:#efece6}
+
   .room{margin:2.25rem 0 0}
   .room-head{display:flex;align-items:baseline;gap:.6rem;border-bottom:1px solid var(--rule);padding-bottom:.35rem}
   .room-head h2{font-size:1.45rem;margin:0;font-weight:600;letter-spacing:-.01em}
@@ -125,7 +131,7 @@
   .report-meta{color:var(--muted);font-size:.85rem;font-family:system-ui,sans-serif}
 
   .sign{margin:2.5rem 0 0;break-inside:avoid}
-  .sign .important{border-top:1px solid var(--rule);padding-top:1rem;margin:0 0 1.8rem;
+  .sign .important{border-top:1px solid var(--rule);padding-top:1rem;margin:0 0 3.4rem;
                    font-size:.92rem;line-height:1.55}
   .sigrow{display:flex;gap:2.5rem;flex-wrap:wrap;margin-bottom:3.4rem}
   .sigfield{flex:1 1 18rem;display:flex;align-items:baseline;gap:.5rem}
@@ -149,6 +155,7 @@
     select.status-sel{border:0;background:none;-webkit-appearance:none;appearance:none;padding:0}
     tbody tr{border-bottom:1px solid #eee}
     .room{break-inside:auto}
+    .room.folded table{display:table}
     .room-head{break-after:avoid}
   }
 </style>
@@ -172,6 +179,7 @@
       <option value="away">Report — Give away or sell elsewhere</option>
     </select>
     <button id="addRoom">Add room</button>
+    <button id="foldAll">Collapse all</button>
     <span class="spacer"></span>
     <button id="syncPill" class="pill" title="Sync now">Sync off</button>
     <button id="syncCfg" class="cog" title="Sync settings" aria-label="Sync settings">⚙</button>
@@ -225,6 +233,7 @@
   var K_REV      = "hc_sync_rev";
   var K_DIRTY    = "hc_sync_dirty";
   var K_DEVICE   = "hc_device";
+  var K_FOLD     = "hc_folded";
   var DEFAULT_URL = "https://crapps-sync.crapps.workers.dev";
   // Shown on every report. Edit here if the wording needs to change.
   var PROPERTY = "La Colmena Famosa, Carretera de Riogordo, 29170, Colmenar, Málaga, España";
@@ -255,6 +264,21 @@
   })();
 
   function uid(){ return Math.random().toString(36).slice(2,9); }
+
+  /* Which rooms are rolled up. This is a view preference for this device, so it
+     lives outside the synced document — collapsing a room on the laptop shouldn't
+     push a revision or change what the phone shows. */
+  var folded = (function(){
+    try { var v = JSON.parse(localStorage.getItem("hc_folded") || "[]"); return Array.isArray(v) ? v : []; }
+    catch(e){ return []; }
+  })();
+  function isFolded(id){ return folded.indexOf(id) !== -1; }
+  function setFolded(id, on){
+    var at = folded.indexOf(id);
+    if (on && at === -1) folded.push(id);
+    if (!on && at !== -1) folded.splice(at,1);
+    ls(K_FOLD, JSON.stringify(folded));
+  }
 
   function starter(){
     var rooms = ["Kitchen","Living room","Main bedroom","Second bedroom",
@@ -298,6 +322,7 @@
     stage.innerHTML = "";
     if (view === "all") renderAll(); else renderReport(view);
     renderTally();
+    syncFoldAllLabel();
     document.getElementById("hint").textContent = view === "all"
       ? "Type in the last row of a room to start a new line. Everything saves as you go."
       : "Printing now gives you just this list.";
@@ -330,6 +355,22 @@
     state.rooms.forEach(function(room){
       var wrap = el("section","room");
       var head = el("div","room-head");
+
+      var fold = document.createElement("button");
+      fold.className = "fold no-print";
+      fold.setAttribute("aria-expanded", String(!isFolded(room.id)));
+      fold.title = "Collapse or expand this room";
+      fold.textContent = isFolded(room.id) ? "▸" : "▾";
+      fold.addEventListener("click", function(){
+        var now = !isFolded(room.id);
+        setFolded(room.id, now);
+        wrap.classList.toggle("folded", now);
+        fold.textContent = now ? "▸" : "▾";
+        fold.setAttribute("aria-expanded", String(!now));
+        syncFoldAllLabel();
+      });
+      head.appendChild(fold);
+      if (isFolded(room.id)) wrap.classList.add("folded");
 
       var h = document.createElement("h2");
       h.contentEditable = "true";
@@ -550,6 +591,21 @@
     document.getElementById("sub").textContent = view==="all"
       ? "Room by room, and where each thing ends up."
       : "";
+  });
+
+  function syncFoldAllLabel(){
+    var btn = document.getElementById("foldAll");
+    btn.hidden = (view !== "all");
+    if (btn.hidden) return;
+    var allShut = state.rooms.length && state.rooms.every(function(r){ return isFolded(r.id); });
+    btn.textContent = allShut ? "Expand all" : "Collapse all";
+  }
+
+  document.getElementById("foldAll").addEventListener("click", function(){
+    var allShut = state.rooms.length && state.rooms.every(function(r){ return isFolded(r.id); });
+    state.rooms.forEach(function(r){ setFolded(r.id, !allShut); });
+    render();
+    window.scrollTo({ top: 0, behavior: "smooth" });
   });
 
   document.getElementById("addRoom").addEventListener("click", function(){
@@ -814,7 +870,15 @@
   /* ---------- boot ---------- */
   store.get().then(function(raw){
     try { state = raw ? JSON.parse(raw) : null; } catch(e){ state = null; }
-    if (!state || !Array.isArray(state.rooms) || !state.rooms.length) state = starter();
+    var fresh = !state || !Array.isArray(state.rooms) || !state.rooms.length;
+    if (fresh){
+      state = starter();
+      store.set(JSON.stringify(state));   // fix the room ids now; folds key off them
+    }
+    // forget folds for rooms that have since gone (deleted here, or replaced by a pull)
+    var live = state.rooms.map(function(r){ return r.id; });
+    var kept = folded.filter(function(id){ return live.indexOf(id) !== -1; });
+    if (kept.length !== folded.length){ folded = kept; ls(K_FOLD, JSON.stringify(folded)); }
     render();
     if (syncCfg()) syncNow("auto"); else pill("Sync off");
   });
