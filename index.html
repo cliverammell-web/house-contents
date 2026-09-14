@@ -86,6 +86,17 @@
   .mrow{display:flex;gap:.5rem;align-items:center;margin-top:.9rem;flex-wrap:wrap}
   .mrow .spacer{flex:1}
 
+  button.grip{border:0;background:none;color:#c2bbaf;cursor:grab;font-size:.9rem;line-height:1;
+              padding:.2rem .25rem}
+  button.grip:hover{color:var(--muted)}
+  button.grip:active{cursor:grabbing}
+  button.move{border:0;background:none;color:#c2bbaf;font-size:.85rem;line-height:1;padding:.25rem .3rem;cursor:pointer}
+  button.move:hover:not(:disabled){color:var(--ink)}
+  button.move:disabled{opacity:.3;cursor:default}
+  .room.dragging{opacity:.45}
+  .room.drop-before{box-shadow:0 -2px 0 0 var(--focus)}
+  .room.drop-after{box-shadow:0 2px 0 0 var(--focus)}
+
   button.fold{border:0;background:none;color:var(--muted);font-size:.8rem;line-height:1;
               padding:.2rem .3rem;cursor:pointer;width:1.4rem;text-align:left}
   button.fold:hover{color:var(--ink)}
@@ -125,6 +136,7 @@
   .tally{display:flex;flex-wrap:wrap;gap:1.1rem;padding:.9rem 0;font-family:system-ui,sans-serif;font-size:.85rem;color:var(--muted)}
   .tally b{color:var(--ink);font-weight:600}
 
+  .report-room td{font-size:1.15rem}
   .report-head{margin:1.5rem 0 .4rem}
   .report-head h2{margin:0;font-size:1.45rem}
   .report-prop{font-size:1rem;margin:.15rem 0 .25rem}
@@ -148,7 +160,9 @@
   }
   @media print{
     @page{margin:18mm}
-    body{background:#fff;font-size:11pt}
+    :root{font-size:11pt}          /* rem sizes now scale with the printed page */
+    body{background:#fff;font-size:1rem}
+    .report-room td{font-size:1.15rem}
     .bar,.no-print,td.act,th.act{display:none !important}
     header{border:0;padding:0 0 .5rem}
     td input[type=text]{border:0;padding:0}
@@ -351,6 +365,23 @@
     t.appendChild(tot);
   }
 
+  var dragId = null;
+
+  function clearDropMarks(){
+    var all = stage.querySelectorAll(".drop-before,.drop-after");
+    for (var i=0;i<all.length;i++) all[i].classList.remove("drop-before","drop-after");
+  }
+
+  function moveRoom(from, to){
+    if (to < 0 || to >= state.rooms.length || from === to) return;
+    var moved = state.rooms.splice(from,1)[0];
+    state.rooms.splice(to,0,moved);
+    save();
+    render();
+    var secs = stage.querySelectorAll("section.room");
+    if (secs[to]) secs[to].scrollIntoView({block:"nearest"});
+  }
+
   function renderAll(){
     state.rooms.forEach(function(room){
       var wrap = el("section","room");
@@ -372,6 +403,47 @@
       head.appendChild(fold);
       if (isFolded(room.id)) wrap.classList.add("folded");
 
+      var grip = document.createElement("button");
+      grip.className = "grip no-print";
+      grip.textContent = "⠿";
+      grip.title = "Drag to reorder";
+      grip.setAttribute("aria-label","Drag to reorder " + room.name);
+      grip.addEventListener("mousedown", function(){ wrap.draggable = true; });
+      grip.addEventListener("mouseup",   function(){ wrap.draggable = false; });
+      head.appendChild(grip);
+
+      wrap.dataset.roomId = room.id;
+      wrap.addEventListener("dragstart", function(e){
+        dragId = room.id;
+        wrap.classList.add("dragging");
+        if (e.dataTransfer){ e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", room.id); } catch(err){} }
+      });
+      wrap.addEventListener("dragend", function(){
+        wrap.draggable = false; wrap.classList.remove("dragging");
+        clearDropMarks();
+      });
+      wrap.addEventListener("dragover", function(e){
+        if (!dragId || dragId === room.id) return;
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+        var box = wrap.getBoundingClientRect();
+        var after = (e.clientY - box.top) > box.height/2;
+        clearDropMarks();
+        wrap.classList.add(after ? "drop-after" : "drop-before");
+      });
+      wrap.addEventListener("drop", function(e){
+        if (!dragId || dragId === room.id) return;
+        e.preventDefault();
+        var from = state.rooms.findIndex(function(r){ return r.id === dragId; });
+        var to   = state.rooms.findIndex(function(r){ return r.id === room.id; });
+        if (from < 0 || to < 0) return;
+        var box = wrap.getBoundingClientRect();
+        if ((e.clientY - box.top) > box.height/2) to += 1;
+        if (from < to) to -= 1;
+        dragId = null;
+        moveRoom(from, to);
+      });
+
       var h = document.createElement("h2");
       h.contentEditable = "true";
       h.spellcheck = false;
@@ -385,6 +457,18 @@
       var c = el("span","count"); c.textContent = live + (live===1?" item":" items");
       head.appendChild(c);
       head.appendChild(el("span","spacer"));
+
+      var idx = state.rooms.indexOf(room);
+      [["↑",-1],["↓",1]].forEach(function(pair){
+        var b = document.createElement("button");
+        b.className = "move no-print";
+        b.textContent = pair[0];
+        b.title = pair[1] < 0 ? "Move room up" : "Move room down";
+        b.setAttribute("aria-label", b.title);
+        b.disabled = (pair[1] < 0 && idx === 0) || (pair[1] > 0 && idx === state.rooms.length-1);
+        b.addEventListener("click", function(){ moveRoom(idx, idx + pair[1]); });
+        head.appendChild(b);
+      });
 
       var del = document.createElement("button");
       del.className = "link no-print"; del.textContent = "Remove room";
@@ -508,7 +592,7 @@
       if (!items.length) return;
       n += items.length;
       items.forEach(function(i){ grand += amount(i); });
-      var sec = el("section","room");
+      var sec = el("section","room report-room");
       var rh = el("div","room-head");
       var rh2 = document.createElement("h2"); rh2.textContent = room.name; rh.appendChild(rh2);
       var c = el("span","count"); c.textContent = items.length + (items.length===1?" item":" items");
