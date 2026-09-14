@@ -2,14 +2,15 @@
    Network first so a fresh upload is picked up on the next load rather than
    being masked by a cached copy. Falls back to cache after 4s or when offline. */
 
-const VERSION = 'house-contents-v12';
+const VERSION = 'house-contents-v2';
 const SHELL = [
   './',
   './index.html',
   './manifest.webmanifest',
   './icon-192.png',
   './icon-512.png',
-  './icon-maskable-512.png'
+  './icon-maskable-512.png',
+  './pagedjs.min.js'
 ];
 const TIMEOUT = 4000;
 
