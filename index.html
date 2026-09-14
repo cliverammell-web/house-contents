@@ -136,7 +136,6 @@
   .tally{display:flex;flex-wrap:wrap;gap:1.1rem;padding:.9rem 0;font-family:system-ui,sans-serif;font-size:.85rem;color:var(--muted)}
   .tally b{color:var(--ink);font-weight:600}
 
-  .report-room td{font-size:1.15rem}
   .report-head{margin:1.5rem 0 .4rem}
   .report-head h2{margin:0;font-size:1.45rem}
   .report-prop{font-size:1rem;margin:.15rem 0 .25rem}
@@ -152,6 +151,25 @@
   .hint{color:var(--muted);font-size:.88rem;font-style:italic;padding:.8rem 0}
   .empty{color:var(--muted);padding:.6rem .5rem;font-style:italic}
 
+  /* paginated print document, built only while printing */
+  .printdoc{position:absolute;left:-20000px;top:0;width:186mm;font-size:11pt}
+  .printdoc .page{height:273mm;position:relative;overflow:hidden;page-break-after:always;break-after:page}
+  .printdoc .page:last-child{page-break-after:auto;break-after:auto}
+  .printdoc .page-body{height:263mm;overflow:hidden}
+  .printdoc .page-foot{position:absolute;left:0;right:0;bottom:0;height:10mm;
+        display:flex;align-items:flex-end;justify-content:space-between;
+        font-family:system-ui,sans-serif;font-size:8.5pt;color:var(--muted);
+        border-top:1px solid var(--rule);padding-top:2mm}
+  .printdoc .report-head{margin:0 0 .4rem}
+  .printdoc .room{margin:1.4rem 0 0}
+  .printdoc .sign{margin-top:2rem}
+
+  @media print{
+    body.printing > header,
+    body.printing > main{display:none !important}
+    body.printing .printdoc{position:static;left:auto;width:auto}
+  }
+
   @media (max-width:640px){
     td.note,th.note{display:none}
     td.item{width:42%}
@@ -159,11 +177,10 @@
     td.status{width:33%}
   }
   @media print{
-    @page{margin:18mm}
+    @page{margin:12mm}
     :root{font-size:11pt}          /* rem sizes now scale with the printed page */
     body{background:#fff;font-size:1rem}
-    .report-room td{font-size:1.15rem}
-    .bar,.no-print,td.act,th.act{display:none !important}
+      .bar,.no-print,td.act,th.act{display:none !important}
     header{border:0;padding:0 0 .5rem}
     td input[type=text]{border:0;padding:0}
     select.status-sel{border:0;background:none;-webkit-appearance:none;appearance:none;padding:0}
@@ -703,7 +720,133 @@
     if (last.length) last[last.length-1].scrollIntoView({behavior:"smooth",block:"center"});
   });
 
-  document.getElementById("print").addEventListener("click", function(){ window.print(); });
+  /* ---------- printing ----------
+     Chrome ignores @page margin boxes, so "Page X of Y" has to be built by hand:
+     lay the report out into fixed-height A4 pages and stamp a footer on each. */
+
+  var PAGE_H_MM = 273;            // A4 297mm less the 12mm @page margins
+  var printDoc = null;
+
+  function px(mm){ return mm * 96 / 25.4; }
+
+  function teardownPrint(){
+    if (printDoc && printDoc.parentNode) printDoc.parentNode.removeChild(printDoc);
+    printDoc = null;
+    document.body.classList.remove("printing");
+  }
+
+  function newPage(){
+    var p = el("div","page");
+    var body = el("div","page-body");
+    var foot = el("div","page-foot");
+    p.appendChild(body); p.appendChild(foot);
+    printDoc.appendChild(p);
+    return { page:p, body:body, foot:foot };
+  }
+
+  function fits(pg, limit){
+    return pg.body.getBoundingClientRect().height <= limit;
+  }
+
+  function buildPrintPages(){
+    var meta = STATUSES.filter(function(s){ return s.id === view; })[0];
+    if (!meta) return false;                       // only reports are paginated
+
+    printDoc = el("div","printdoc");
+    document.body.appendChild(printDoc);
+
+    var limit = px(PAGE_H_MM) - px(10);            // leave room for the footer line
+    var cur = newPage();
+
+    // heading block, page one only
+    var head = el("div","report-head");
+    var h = document.createElement("h2"); h.textContent = meta.label; head.appendChild(h);
+    var prop = el("div","report-prop"); prop.textContent = "for " + PROPERTY; head.appendChild(prop);
+    cur.body.appendChild(head);
+
+    var withPrice = priced(view), grand = 0, n = 0;
+
+    state.rooms.forEach(function(room){
+      var items = room.items.filter(function(i){ return i.name.trim() && i.status === view; });
+      if (!items.length) return;
+
+      var sec = null, tb = null;
+      function openSection(continued){
+        sec = el("section","room report-room");
+        var rh = el("div","room-head");
+        var t = document.createElement("h2");
+        t.textContent = room.name + (continued ? " (continued)" : "");
+        rh.appendChild(t); sec.appendChild(rh);
+        var tbl = document.createElement("table");
+        tb = document.createElement("tbody");
+        tbl.appendChild(tb); sec.appendChild(tbl);
+        cur.body.appendChild(sec);
+      }
+      openSection(false);
+
+      items.forEach(function(i){
+        n++; grand += amount(i);
+        var tr = document.createElement("tr");
+        var a = el("td","item"); a.textContent = i.name;
+        var b = el("td","note"); b.textContent = i.note || "";
+        tr.appendChild(a); tr.appendChild(b);
+        if (withPrice){
+          var c = el("td","price"); c.textContent = hasPrice(i) ? money(amount(i)) : "";
+          tr.appendChild(c);
+        }
+        tb.appendChild(tr);
+        if (!fits(cur, limit)){                    // overflowed — move this row to a new page
+          tb.removeChild(tr);
+          if (!tb.children.length && sec.parentNode) sec.parentNode.removeChild(sec);
+          cur = newPage();
+          openSection(true);
+          tb.appendChild(tr);
+        }
+      });
+    });
+
+    // the caveat and signature block, kept whole
+    var foot = el("section","sign");
+    var note = el("p","important"); note.textContent = FOOTNOTE; foot.appendChild(note);
+    [["Seller’s name","Seller’s signature"],
+     ["Buyer’s name","Buyer’s signature"],
+     ["Date"]].forEach(function(pair){
+      var row = el("div","sigrow");
+      pair.forEach(function(label){
+        var f = el("div","sigfield");
+        var l = el("span","siglabel"); l.textContent = label + ":";
+        var r = el("span","sigrule");
+        f.appendChild(l); f.appendChild(r); row.appendChild(f);
+      });
+      foot.appendChild(row);
+    });
+    cur.body.appendChild(foot);
+    if (!fits(cur, limit)){
+      cur.body.removeChild(foot);
+      cur = newPage();
+      cur.body.appendChild(foot);
+    }
+
+    // stamp the footers now the total is known
+    var pages = printDoc.querySelectorAll(".page");
+    var total = pages.length;
+    for (var i=0;i<total;i++){
+      var f = pages[i].querySelector(".page-foot");
+      var left = el("span","foot-left");
+      left.textContent = meta.label + " — " + PROPERTY.split(",")[0];
+      var right = el("span","foot-right");
+      right.textContent = "Page " + (i+1) + " of " + total;
+      f.appendChild(left); f.appendChild(right);
+    }
+    return true;
+  }
+
+  document.getElementById("print").addEventListener("click", function(){
+    if (buildPrintPages()) document.body.classList.add("printing");
+    window.print();
+  });
+
+  window.addEventListener("afterprint", teardownPrint);
 
   document.getElementById("save").addEventListener("click", function(){
     download("house-contents-" + stamp() + ".json",
