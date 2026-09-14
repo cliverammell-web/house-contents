@@ -155,7 +155,9 @@
   .printdoc{position:absolute;left:-20000px;top:0;width:186mm;font-size:11pt}
   .printdoc .page{height:273mm;position:relative;overflow:hidden;page-break-after:always;break-after:page}
   .printdoc .page:last-child{page-break-after:auto;break-after:auto}
-  .printdoc .page-body{height:261mm;overflow:hidden}
+  /* No fixed height here: scrollHeight never reports less than the element's own
+     height, so a fixed box would always measure as full. The .page clips instead. */
+  .printdoc .page-body{overflow:visible}
   .printdoc .page-foot{position:absolute;left:0;right:0;bottom:0;height:10mm;
         display:flex;align-items:flex-end;justify-content:space-between;
         font-family:system-ui,sans-serif;font-size:8.5pt;color:var(--muted);
@@ -757,7 +759,7 @@
     printDoc = el("div","printdoc");
     document.body.appendChild(printDoc);
 
-    var limit = px(260);                           // usable height inside .page-body
+    var limit = px(256);                           // 273mm page less the footer strip
     var cur = newPage();
 
     // heading block, page one only
