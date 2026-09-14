@@ -155,7 +155,7 @@
   .printdoc{position:absolute;left:-20000px;top:0;width:186mm;font-size:11pt}
   .printdoc .page{height:273mm;position:relative;overflow:hidden;page-break-after:always;break-after:page}
   .printdoc .page:last-child{page-break-after:auto;break-after:auto}
-  .printdoc .page-body{height:263mm;overflow:hidden}
+  .printdoc .page-body{height:261mm;overflow:hidden}
   .printdoc .page-foot{position:absolute;left:0;right:0;bottom:0;height:10mm;
         display:flex;align-items:flex-end;justify-content:space-between;
         font-family:system-ui,sans-serif;font-size:8.5pt;color:var(--muted);
@@ -167,7 +167,7 @@
   @media print{
     body.printing > header,
     body.printing > main{display:none !important}
-    body.printing .printdoc{position:static;left:auto;width:auto}
+    body.printing .printdoc{position:static;left:auto;top:auto}
   }
 
   @media (max-width:640px){
@@ -745,7 +745,9 @@
   }
 
   function fits(pg, limit){
-    return pg.body.getBoundingClientRect().height <= limit;
+    // scrollHeight, not getBoundingClientRect: the box itself is a fixed page height,
+    // so only the content height tells us whether we've overflowed.
+    return pg.body.scrollHeight <= limit;
   }
 
   function buildPrintPages(){
@@ -755,7 +757,7 @@
     printDoc = el("div","printdoc");
     document.body.appendChild(printDoc);
 
-    var limit = px(PAGE_H_MM) - px(10);            // leave room for the footer line
+    var limit = px(260);                           // usable height inside .page-body
     var cur = newPage();
 
     // heading block, page one only
