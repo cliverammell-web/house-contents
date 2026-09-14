@@ -120,8 +120,17 @@
   .tally b{color:var(--ink);font-weight:600}
 
   .report-head{margin:1.5rem 0 .4rem}
-  .report-head h2{margin:0;font-size:1.3rem}
+  .report-head h2{margin:0;font-size:1.45rem}
+  .report-prop{font-size:1rem;margin:.15rem 0 .25rem}
   .report-meta{color:var(--muted);font-size:.85rem;font-family:system-ui,sans-serif}
+
+  .sign{margin:2.5rem 0 0;break-inside:avoid}
+  .sign .important{border-top:1px solid var(--rule);padding-top:1rem;margin:0 0 1.8rem;
+                   font-size:.92rem;line-height:1.55}
+  .sigrow{display:flex;gap:2.5rem;flex-wrap:wrap;margin-bottom:1.6rem}
+  .sigfield{flex:1 1 18rem;display:flex;align-items:baseline;gap:.5rem}
+  .siglabel{white-space:nowrap;font-size:.95rem}
+  .sigrule{flex:1;border-bottom:1px solid #9c958a;height:1.15rem}
   .hint{color:var(--muted);font-size:.88rem;font-style:italic;padding:.8rem 0}
   .empty{color:var(--muted);padding:.6rem .5rem;font-style:italic}
 
@@ -217,6 +226,12 @@
   var K_DIRTY    = "hc_sync_dirty";
   var K_DEVICE   = "hc_device";
   var DEFAULT_URL = "https://crapps-sync.crapps.workers.dev";
+  // Shown on every report. Edit here if the wording needs to change.
+  var PROPERTY = "La Colmena Famosa, Carretera de Riogordo, 29170, Colmenar, Málaga, España";
+  var FOOTNOTE = "IMPORTANT: Any item which the seller wishes to remove and which could reasonably be "
+    + "considered part of the property or a fixed installation should be specifically identified and "
+    + "agreed in writing with the buyer before signing the reservation/arras agreement and/or the "
+    + "public deed of sale.";
   var state = null, view = "all";
 
   /* ---------- storage: artifact host, then browser, then memory ---------- */
@@ -289,6 +304,8 @@
   }
 
   function renderTally(){
+    var t = document.getElementById("tally");
+    if (view !== "all"){ t.innerHTML = ""; return; }   // reports carry no running totals
     var counts = {}, sums = {}; STATUSES.forEach(function(s){ counts[s.id]=0; sums[s.id]=0; });
     var total = 0;
     state.rooms.forEach(function(r){ r.items.forEach(function(i){
@@ -297,7 +314,6 @@
       sums[i.status] = (sums[i.status]||0) + amount(i);
       total++;
     });});
-    var t = document.getElementById("tally");
     t.innerHTML = "";
     STATUSES.forEach(function(s){
       var span = document.createElement("span");
@@ -438,6 +454,9 @@
     var head = el("div","report-head");
     var h = document.createElement("h2"); h.textContent = meta.label;
     head.appendChild(h);
+    var prop = el("div","report-prop");
+    prop.textContent = "for " + PROPERTY;
+    head.appendChild(prop);
     var m = el("div","report-meta");
     head.appendChild(m);
     stage.appendChild(head);
@@ -488,6 +507,34 @@
     m.textContent = n + (n===1?" item":" items")
       + (withPrice && grand ? " · " + money(grand) : "")
       + " · " + new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});
+
+    // Contract annex furniture: the caveat about fixtures, then somewhere to sign.
+    var foot = el("section","sign");
+    var note = el("p","important");
+    note.textContent = FOOTNOTE;
+    foot.appendChild(note);
+
+    [["Seller’s name","Seller’s signature"],
+     ["Buyer’s name","Buyer’s signature"]].forEach(function(pair){
+      var row = el("div","sigrow");
+      pair.forEach(function(label){
+        var f = el("div","sigfield");
+        var l = el("span","siglabel"); l.textContent = label + ":";
+        var r = el("span","sigrule");
+        f.appendChild(l); f.appendChild(r);
+        row.appendChild(f);
+      });
+      foot.appendChild(row);
+    });
+
+    var drow = el("div","sigrow");
+    var df = el("div","sigfield");
+    var dl = el("span","siglabel"); dl.textContent = "Date:";
+    var dr = el("span","sigrule");
+    df.appendChild(dl); df.appendChild(dr);
+    drow.appendChild(df);
+    foot.appendChild(drow);
+    stage.appendChild(foot);
     if (!n){
       var p = el("p","empty");
       p.textContent = "Nothing marked “" + meta.label + "” yet.";
@@ -502,7 +549,7 @@
     view = e.target.value; render();
     document.getElementById("sub").textContent = view==="all"
       ? "Room by room, and where each thing ends up."
-      : "Filtered list — ready to print or send.";
+      : "";
   });
 
   document.getElementById("addRoom").addEventListener("click", function(){
