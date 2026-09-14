@@ -155,6 +155,14 @@
   .printdoc{position:absolute;left:-20000px;top:0;width:186mm;font-size:11pt}
   .printdoc .page{height:273mm;position:relative;overflow:hidden;page-break-after:always;break-after:page}
   .printdoc .page:last-child{page-break-after:auto;break-after:auto}
+  /* paged.js output: it makes its own page boxes, so our fixed-height page rules
+     below must not apply to it. */
+  .printdoc.paged .page, .printdoc.paged .page-body, .printdoc.paged .page-foot{all:unset}
+  .pagedjs_page{background:#fff}
+  .printdoc.paged .report-head{margin:0 0 .4rem}
+  .printdoc.paged .room{margin:1.4rem 0 0}
+  .printdoc.paged .sign{margin-top:2rem}
+
   /* max-height, never a fixed height: scrollHeight never reports less than the
      element's own height, so a fixed box would always measure as full. */
   .printdoc .page-body{overflow:visible}
@@ -850,9 +858,125 @@
     return true;
   }
 
+  /* Build the report as one continuous flow — paged.js slices it into pages. */
+  function buildReportFlow(){
+    var meta = STATUSES.filter(function(s){ return s.id === view; })[0];
+    if (!meta) return null;
+    var flow = el("div","flow");
+
+    var head = el("div","report-head");
+    var h = document.createElement("h2"); h.textContent = meta.label; head.appendChild(h);
+    var prop = el("div","report-prop"); prop.textContent = "for " + PROPERTY; head.appendChild(prop);
+    flow.appendChild(head);
+
+    var withPrice = priced(view);
+    state.rooms.forEach(function(room){
+      var items = room.items.filter(function(i){ return i.name.trim() && i.status === view; });
+      if (!items.length) return;
+      var sec = el("section","room report-room");
+      var rh = el("div","room-head");
+      var t = document.createElement("h2"); t.textContent = room.name; rh.appendChild(t);
+      sec.appendChild(rh);
+      var tbl = document.createElement("table");
+      var tb = document.createElement("tbody");
+      items.forEach(function(i){
+        var tr = document.createElement("tr");
+        var a = el("td","item"); a.textContent = i.name;
+        var b = el("td","note"); b.textContent = i.note || "";
+        tr.appendChild(a); tr.appendChild(b);
+        if (withPrice){
+          var c = el("td","price"); c.textContent = hasPrice(i) ? money(amount(i)) : "";
+          tr.appendChild(c);
+        }
+        tb.appendChild(tr);
+      });
+      tbl.appendChild(tb); sec.appendChild(tbl);
+      flow.appendChild(sec);
+    });
+
+    var foot = el("section","sign");
+    var note = el("p","important"); note.textContent = FOOTNOTE; foot.appendChild(note);
+    [["Seller’s name","Seller’s signature"],
+     ["Buyer’s name","Buyer’s signature"],
+     ["Date"]].forEach(function(pair){
+      var row = el("div","sigrow");
+      pair.forEach(function(label){
+        var f = el("div","sigfield");
+        var l = el("span","siglabel"); l.textContent = label + ":";
+        var r = el("span","sigrule");
+        f.appendChild(l); f.appendChild(r); row.appendChild(f);
+      });
+      foot.appendChild(row);
+    });
+    flow.appendChild(foot);
+    return { flow: flow, label: meta.label };
+  }
+
+  function esc(s){ return String(s).replace(/\\/g,"\\\\").replace(/"/g,'\\"'); }
+
+  /* @page margin boxes are what give us "Page X of Y" properly typeset.
+     Chrome ignores them; paged.js implements them by repaginating in the browser. */
+  function pageCSS(label){
+    return '@page{size:A4;margin:12mm;'
+      + '@bottom-left{content:"' + esc(label + " — " + PROPERTY.split(",")[0]) + '";'
+      +   'font-family:system-ui,sans-serif;font-size:8.5pt;color:#6f6a62}'
+      + '@bottom-right{content:"Page " counter(page) " of " counter(pages);'
+      +   'font-family:system-ui,sans-serif;font-size:8.5pt;color:#6f6a62}}'
+      + '.pagedjs_page .sign{break-inside:avoid}'
+      + '.pagedjs_page .room-head{break-after:avoid}'
+      + '.pagedjs_page tr{break-inside:avoid}';
+  }
+
+  var pagedLoading = null;
+  function loadPaged(){
+    if (window.Paged && window.Paged.Previewer) return Promise.resolve(true);
+    if (pagedLoading) return pagedLoading;
+    pagedLoading = new Promise(function(resolve){
+      var done = false;
+      function finish(ok){ if (done) return; done = true; resolve(ok && !!(window.Paged && window.Paged.Previewer)); }
+      var s = document.createElement("script");
+      s.src = "pagedjs.min.js";
+      s.onload  = function(){ finish(true); };
+      s.onerror = function(){ finish(false); };
+      document.head.appendChild(s);
+      setTimeout(function(){ finish(false); }, 3000);   // stalled load must not wedge Print
+    });
+    return pagedLoading;
+  }
+
+  function printViaPaged(){
+    var built = buildReportFlow();
+    if (!built) return Promise.resolve(false);
+
+    return loadPaged().then(function(ok){
+      if (!ok) return false;
+      printDoc = el("div","printdoc paged");
+      document.body.appendChild(printDoc);
+      var blob = new Blob([pageCSS(built.label)], { type:"text/css" });
+      var cssUrl = URL.createObjectURL(blob);
+      var prev = new window.Paged.Previewer();
+      return prev.preview(built.flow.innerHTML, [cssUrl], printDoc).then(function(){
+        URL.revokeObjectURL(cssUrl);
+        return true;
+      }).catch(function(err){
+        console.warn("paged.js failed, falling back:", err);
+        URL.revokeObjectURL(cssUrl);
+        teardownPrint();
+        return false;
+      });
+    });
+  }
+
   document.getElementById("print").addEventListener("click", function(){
-    if (buildPrintPages()) document.body.classList.add("printing");
-    window.print();
+    var btn = this;
+    if (view === "all"){ window.print(); return; }
+    btn.disabled = true; btn.textContent = "Preparing…";
+    printViaPaged().then(function(done){
+      if (!done && buildPrintPages()) { /* hand-rolled fallback */ }
+      document.body.classList.add("printing");
+      btn.disabled = false; btn.textContent = "Print";
+      window.print();
+    });
   });
 
   window.addEventListener("afterprint", teardownPrint);
