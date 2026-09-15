@@ -129,8 +129,11 @@
   th.price,td.price{text-align:right}
   td.price input{text-align:right;font-variant-numeric:tabular-nums}
   td.price .na{color:#c9c3b8;font-size:.85rem;padding-right:.4rem}
-  tr.total td{border-top:1px solid var(--rule);padding-top:.5rem;font-weight:600}
-  tr.total td.label{color:var(--muted);font-weight:400;font-family:system-ui,sans-serif;font-size:.85rem}
+  .totalline{display:flex;justify-content:space-between;align-items:baseline;gap:1rem;
+        border-top:1px solid #9c958a;margin:1.2rem 0 0;padding-top:.55rem;font-size:1.05rem}
+  .totalline .tl-label{font-family:system-ui,sans-serif;font-size:.85rem;color:var(--muted)}
+  .totalline .tl-value{font-weight:600;font-variant-numeric:tabular-nums}
+  .sign .totalline{margin:0 0 1.8rem}
   td input[type=text]{width:100%;border:1px solid transparent;background:transparent;padding:.35rem .4rem;font-family:inherit;font-size:1rem}
   td input[type=text]:hover{border-color:#e6e1d8}
   td input[type=text]:focus{border-color:var(--rule);background:#fff}
@@ -651,6 +654,16 @@
     if (prev){ prev.focus(); prev.setSelectionRange(prev.value.length, prev.value.length); }
   }
 
+  /* Total line for the priced reports, sat just above the signature block so it
+     reads as the closing figure of the schedule. */
+  function totalBlock(label, grand){
+    var box = el("div","totalline");
+    var l = el("span","tl-label"); l.textContent = "Total — " + label.toLowerCase();
+    var v = el("span","tl-value"); v.textContent = money(grand);
+    box.appendChild(l); box.appendChild(v);
+    return box;
+  }
+
   function renderReport(statusId){
     var meta = STATUSES.filter(function(s){return s.id===statusId;})[0];
     var head = el("div","report-head");
@@ -694,17 +707,7 @@
       stage.appendChild(sec);
     });
 
-    if (withPrice && n){
-      var tot = document.createElement("table");
-      var ttb = document.createElement("tbody");
-      var trt = document.createElement("tr"); trt.className = "total";
-      var l = el("td","item label"); l.textContent = "Total";
-      var sp = el("td","note");
-      var v = el("td","price"); v.textContent = money(grand);
-      trt.appendChild(l); trt.appendChild(sp); trt.appendChild(v);
-      ttb.appendChild(trt); tot.appendChild(ttb);
-      stage.appendChild(tot);
-    }
+    if (withPrice && n) stage.appendChild(totalBlock(meta.label, grand));
 
     m.textContent = n + (n===1?" item":" items")
       + (withPrice && grand ? " · " + money(grand) : "")
@@ -882,8 +885,9 @@
       });
     });
 
-    // the caveat and signature block, kept whole
+    // the total, caveat and signature block, kept whole
     var foot = el("section","sign");
+    if (withPrice && grand) foot.appendChild(totalBlock(meta.label, grand));
     var note = el("p","important"); note.textContent = FOOTNOTE; foot.appendChild(note);
     [["Seller’s name","Seller’s signature"],
      ["Buyer’s name","Buyer’s signature"],
@@ -964,8 +968,13 @@
       tbl.appendChild(tb); sec.appendChild(tbl);
       flow.appendChild(sec);
     });
+    grand = 0;
+    state.rooms.forEach(function(room){ room.items.forEach(function(i){
+      if (i.name.trim() && i.status === view) grand += amount(i);
+    });});
 
     var foot = el("section","sign");
+    if (withPrice && grand) foot.appendChild(totalBlock(meta.label, grand));
     var note = el("p","important"); note.textContent = FOOTNOTE; foot.appendChild(note);
     [["Seller’s name","Seller’s signature"],
      ["Buyer’s name","Buyer’s signature"],
