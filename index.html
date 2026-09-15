@@ -81,6 +81,14 @@
   .sheet .mnote{margin:0 0 1.1rem;color:var(--muted);font-size:.9rem}
   .sheet label{display:block;font-family:system-ui,sans-serif;font-size:.78rem;color:var(--muted);margin:.8rem 0 .25rem}
   .sheet input{width:100%}
+  .sheet textarea{width:100%;font:inherit;font-size:.95rem;padding:.45rem .6rem;
+        border:1px solid var(--rule);border-radius:3px;background:var(--panel);
+        color:var(--ink);resize:vertical}
+  .sheet select{width:100%}
+  .sheet .mhint{color:var(--muted);font-size:.8rem;font-family:system-ui,sans-serif;margin:.3rem 0 0}
+  .sheet label.check{display:flex;align-items:center;gap:.5rem;font-size:.92rem;
+        font-family:inherit;color:var(--ink);margin:1.1rem 0 0;text-transform:none}
+  .sheet label.check input{width:auto}
   .sheet .mstat{font-family:system-ui,sans-serif;font-size:.85rem;color:var(--muted);margin:1rem 0 .2rem;min-height:1.2em}
   .sheet .mstat[data-s="bad"]{color:var(--away)}
   .sheet .mstat[data-s="ok"]{color:var(--sale)}
@@ -222,6 +230,7 @@
       <option value="away">Report — Give away or sell elsewhere</option>
     </select>
     <button id="addRoom">Add room</button>
+    <button id="options">Options</button>
     <button id="foldAll">Collapse all</button>
     <span class="spacer"></span>
     <button id="syncPill" class="pill" title="Sync now">Sync off</button>
@@ -238,6 +247,29 @@
 </main>
 
 <input type="file" id="file" accept="application/json,.json" hidden>
+
+<div id="optModal" class="modal no-print" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="oTitle">
+    <h3 id="oTitle">Options</h3>
+    <p class="mnote">These travel with the list, so they're the same on every device.</p>
+    <label for="oAddr">House address</label>
+    <textarea id="oAddr" rows="3" spellcheck="false"></textarea>
+    <p class="mhint">Appears on every report, after “for”.</p>
+    <label for="oCur">Currency</label>
+    <select id="oCur">
+      <option value="GBP">Pounds (£)</option>
+      <option value="EUR">Euros (€)</option>
+      <option value="USD">Dollars ($)</option>
+    </select>
+    <label class="check"><input type="checkbox" id="oAmounts"> Show prices and totals on reports</label>
+    <p class="mstat" id="oStat"></p>
+    <div class="mrow">
+      <button id="oSave" class="primary">Save</button>
+      <span class="spacer"></span>
+      <button id="oClose">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <div id="modal" class="modal no-print" hidden>
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="mTitle">
@@ -279,7 +311,22 @@
   var K_FOLD     = "hc_folded";
   var DEFAULT_URL = "https://crapps-sync.crapps.workers.dev";
   // Shown on every report. Edit here if the wording needs to change.
-  var PROPERTY = "La Colmena Famosa, Carretera de Riogordo, 29170, Colmenar, Málaga, España";
+  // Defaults for a fresh install. Once saved they live in the synced document,
+  // so changing them on one device changes them everywhere.
+  var DEFAULT_PROPERTY = "La Colmena Famosa, Carretera de Riogordo, 29170, Colmenar, Málaga, España";
+  var CURRENCIES = { GBP:{symbol:"£",locale:"en-GB"}, EUR:{symbol:"€",locale:"en-GB"}, USD:{symbol:"$",locale:"en-US"} };
+
+  function settings(){
+    if (!state.settings) state.settings = {};
+    var s = state.settings;
+    if (typeof s.property !== "string") s.property = DEFAULT_PROPERTY;
+    if (typeof s.currency !== "string" || !CURRENCIES[s.currency]) s.currency = "EUR";
+    if (typeof s.showAmounts !== "boolean") s.showAmounts = true;
+    return s;
+  }
+  function propertyText(){ return settings().property; }
+  function currency(){ return CURRENCIES[settings().currency]; }
+  function showAmounts(){ return settings().showAmounts; }
   var FOOTNOTE = "IMPORTANT: Any item which the seller wishes to remove and which could reasonably be "
     + "considered part of the property or a fixed installation should be specifically identified and "
     + "agreed in writing with the buyer before signing the reservation/arras agreement and/or the "
@@ -348,7 +395,8 @@
     return isFinite(n);
   }
   function money(n){
-    return "€" + n.toLocaleString("en-GB",{minimumFractionDigits:0, maximumFractionDigits:2});
+    var c = currency();
+    return c.symbol + n.toLocaleString(c.locale,{minimumFractionDigits:0, maximumFractionDigits:2});
   }
 
   function save(){
@@ -557,7 +605,7 @@
       }
       var p = document.createElement("input");
       p.type = "text"; p.inputMode = "decimal";
-      p.value = item.price || ""; p.placeholder = "€";
+      p.value = item.price || ""; p.placeholder = currency().symbol;
       p.setAttribute("aria-label","Asking price");
       p.addEventListener("input", function(){ item.price = p.value; save(); renderTally(); });
       tdP.appendChild(p);
@@ -609,13 +657,13 @@
     var h = document.createElement("h2"); h.textContent = meta.label;
     head.appendChild(h);
     var prop = el("div","report-prop");
-    prop.textContent = "for " + PROPERTY;
+    prop.textContent = "for " + propertyText();
     head.appendChild(prop);
     var m = el("div","report-meta");
     head.appendChild(m);
     stage.appendChild(head);
 
-    var n = 0, grand = 0, withPrice = priced(statusId);
+    var n = 0, grand = 0, withPrice = priced(statusId) && showAmounts();
     state.rooms.forEach(function(room){
       var items = room.items.filter(function(i){ return i.name.trim() && i.status===statusId; });
       if (!items.length) return;
@@ -779,7 +827,7 @@
     // heading block, page one only
     var head = el("div","report-head");
     var h = document.createElement("h2"); h.textContent = meta.label; head.appendChild(h);
-    var prop = el("div","report-prop"); prop.textContent = "for " + PROPERTY; head.appendChild(prop);
+    var prop = el("div","report-prop"); prop.textContent = "for " + propertyText(); head.appendChild(prop);
     var fm = el("div","report-meta");
     var fcount = 0, fgrand = 0;
     state.rooms.forEach(function(room){
@@ -788,12 +836,12 @@
       });
     });
     fm.textContent = fcount + (fcount===1?" item":" items")
-      + (priced(view) && fgrand ? " · " + money(fgrand) : "")
+      + (priced(view) && showAmounts() && fgrand ? " · " + money(fgrand) : "")
       + " · " + new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});
     head.appendChild(fm);
     cur.body.appendChild(head);
 
-    var withPrice = priced(view), grand = 0, n = 0;
+    var withPrice = priced(view) && showAmounts(), grand = 0, n = 0;
 
     state.rooms.forEach(function(room){
       var items = room.items.filter(function(i){ return i.name.trim() && i.status === view; });
@@ -862,7 +910,7 @@
     for (var i=0;i<total;i++){
       var f = pages[i].querySelector(".page-foot");
       var left = el("span","foot-left");
-      left.textContent = meta.label + " — " + PROPERTY.split(",")[0];
+      left.textContent = meta.label + " — " + propertyText().split(",")[0];
       var right = el("span","foot-right");
       right.textContent = "Page " + (i+1) + " of " + total;
       f.appendChild(left); f.appendChild(right);
@@ -878,8 +926,8 @@
 
     var head = el("div","report-head");
     var h = document.createElement("h2"); h.textContent = meta.label; head.appendChild(h);
-    var prop = el("div","report-prop"); prop.textContent = "for " + PROPERTY; head.appendChild(prop);
-    var withPrice = priced(view);
+    var prop = el("div","report-prop"); prop.textContent = "for " + propertyText(); head.appendChild(prop);
+    var withPrice = priced(view) && showAmounts();
     var count = 0, grand = 0;
     state.rooms.forEach(function(room){
       room.items.forEach(function(i){
@@ -941,7 +989,7 @@
      Chrome ignores them; paged.js implements them by repaginating in the browser. */
   function pageCSS(label){
     return '@page{size:A4;margin:12mm;'
-      + '@bottom-left{content:"' + esc(label + " — " + PROPERTY.split(",")[0]) + '";'
+      + '@bottom-left{content:"' + esc(label + " — " + propertyText().split(",")[0]) + '";'
       +   'font-family:system-ui,sans-serif;font-size:8.5pt;color:#6f6a62}'
       + '@bottom-right{content:"Page " counter(page) " of " counter(pages);'
       +   'font-family:system-ui,sans-serif;font-size:8.5pt;color:#6f6a62}}'
@@ -1021,7 +1069,7 @@
 
   document.getElementById("csv").addEventListener("click", function(){
     var only = (view === "all") ? null : view;
-    var rows = [["Room","Item","Note","Asking price (EUR)","Where it goes"]];
+    var rows = [["Room","Item","Note","Asking price (" + settings().currency + ")","Where it goes"]];
     state.rooms.forEach(function(r){ r.items.forEach(function(i){
       if(!i.name.trim()) return;
       if (only && i.status !== only) return;
@@ -1205,6 +1253,38 @@
       if (reason === "auto") console.warn("sync:", err.message);
     }).then(function(){ syncing = false; });
   }
+
+  /* ---------- options ---------- */
+  var optModal = document.getElementById("optModal");
+
+  function openOptions(){
+    var s = settings();
+    document.getElementById("oAddr").value = s.property;
+    document.getElementById("oCur").value = s.currency;
+    document.getElementById("oAmounts").checked = s.showAmounts;
+    document.getElementById("oStat").textContent = "";
+    optModal.hidden = false;
+    document.getElementById("oAddr").focus();
+  }
+  function closeOptions(){ optModal.hidden = true; }
+
+  document.getElementById("options").addEventListener("click", openOptions);
+  document.getElementById("oClose").addEventListener("click", closeOptions);
+  optModal.addEventListener("click", function(e){ if (e.target === optModal) closeOptions(); });
+  document.addEventListener("keydown", function(e){ if (e.key === "Escape" && !optModal.hidden) closeOptions(); });
+
+  document.getElementById("oSave").addEventListener("click", function(){
+    var addr = document.getElementById("oAddr").value.replace(/\s+/g," ").trim();
+    if (!addr){ document.getElementById("oStat").textContent = "Enter the house address."; 
+                document.getElementById("oStat").dataset.s = "bad"; return; }
+    var s = settings();
+    s.property = addr;
+    s.currency = document.getElementById("oCur").value;
+    s.showAmounts = document.getElementById("oAmounts").checked;
+    save();
+    closeOptions();
+    render();
+  });
 
   /* ---------- sync settings dialog ---------- */
   var modal = document.getElementById("modal");
