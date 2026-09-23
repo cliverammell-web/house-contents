@@ -62,6 +62,8 @@
   button:hover{border-color:#b9b2a6}
   button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
   button.primary:hover{background:#000}
+  button.danger{background:var(--away);color:#fff;border-color:var(--away)}
+  button.danger:hover{background:#752f2f}
   button.link{border:0;background:none;color:var(--muted);padding:.3rem .35rem}
   button.link:hover{color:var(--away);text-decoration:underline}
   :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
@@ -250,6 +252,32 @@
 </main>
 
 <input type="file" id="file" accept="application/json,.json" hidden>
+
+<div id="confirmModal" class="modal no-print" hidden>
+  <div class="sheet" role="alertdialog" aria-modal="true" aria-labelledby="cTitle" aria-describedby="cBody">
+    <h3 id="cTitle"></h3>
+    <p class="mnote" id="cBody"></p>
+    <div class="mrow">
+      <button id="cGo" class="danger"></button>
+      <span class="spacer"></span>
+      <button id="cCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="roomModal" class="modal no-print" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rTitle">
+    <h3 id="rTitle">Add a room</h3>
+    <label for="rName">Room or area</label>
+    <input type="text" id="rName" placeholder="Garage, terrace, loft…" autocomplete="off" spellcheck="false">
+    <p class="mstat" id="rStat"></p>
+    <div class="mrow">
+      <button id="rAdd" class="primary">Add room</button>
+      <span class="spacer"></span>
+      <button id="rCancel">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <div id="optModal" class="modal no-print" hidden>
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="oTitle">
@@ -553,9 +581,18 @@
       var del = document.createElement("button");
       del.className = "link no-print"; del.textContent = "Remove room";
       del.addEventListener("click", function(){
-        if (live && !confirm("Remove " + room.name + " and its " + live + " item(s)?")) return;
-        state.rooms = state.rooms.filter(function(r){ return r.id !== room.id; });
-        save(); render();
+        askConfirm({
+          title: "Remove " + room.name + "?",
+          body: live
+            ? "This deletes the room and the " + live + (live===1 ? " item" : " items")
+              + " in it. There's no undo, though Save backup keeps a copy you can reopen."
+            : "This room is empty. Removing it deletes nothing else.",
+          confirmLabel: live ? "Delete room and items" : "Delete room"
+        }, function(){
+          state.rooms = state.rooms.filter(function(r){ return r.id !== room.id; });
+          setFolded(room.id, false);          // don't leave a stale fold entry behind
+          save(); render();
+        });
       });
       head.appendChild(del);
       wrap.appendChild(head);
@@ -772,16 +809,74 @@
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
 
-  document.getElementById("addRoom").addEventListener("click", function(){
-    var name = prompt("Name of the room or area:");
-    if (name === null) return;
-    state.rooms.push({ id:uid(), name:(name.trim()||"Untitled room"), items:[blankItem()] });
+  /* Shared confirmation dialog. Replaces window.confirm so destructive actions
+     look like the rest of the app and always ask — including for an empty room,
+     which the old guard deleted without a word. */
+  var confirmModal = document.getElementById("confirmModal");
+  var confirmGo = null;
+
+  function askConfirm(opts, onYes){
+    document.getElementById("cTitle").textContent = opts.title;
+    document.getElementById("cBody").textContent  = opts.body || "";
+    document.getElementById("cBody").hidden = !opts.body;
+    var go = document.getElementById("cGo");
+    go.textContent = opts.confirmLabel || "Delete";
+    confirmGo = onYes;
+    confirmModal.hidden = false;
+    document.getElementById("cCancel").focus();   // safe option focused, not the destructive one
+  }
+  function closeConfirm(){ confirmModal.hidden = true; confirmGo = null; }
+
+  document.getElementById("cGo").addEventListener("click", function(){
+    var fn = confirmGo;
+    closeConfirm();
+    if (fn) fn();
+  });
+  document.getElementById("cCancel").addEventListener("click", closeConfirm);
+  confirmModal.addEventListener("click", function(e){ if (e.target === confirmModal) closeConfirm(); });
+  document.addEventListener("keydown", function(e){ if (e.key === "Escape" && !confirmModal.hidden) closeConfirm(); });
+
+  var roomModal = document.getElementById("roomModal");
+
+  function openAddRoom(){
+    document.getElementById("rName").value = "";
+    document.getElementById("rStat").textContent = "";
+    delete document.getElementById("rStat").dataset.s;
+    roomModal.hidden = false;
+    document.getElementById("rName").focus();
+  }
+  function closeAddRoom(){ roomModal.hidden = true; }
+
+  function addRoom(){
+    var field = document.getElementById("rName");
+    var stat  = document.getElementById("rStat");
+    var name  = field.value.replace(/\s+/g," ").trim();
+    if (!name){
+      stat.textContent = "Give the room a name."; stat.dataset.s = "bad";
+      field.focus(); return;
+    }
+    var clash = state.rooms.some(function(r){ return r.name.toLowerCase() === name.toLowerCase(); });
+    if (clash){
+      stat.textContent = "There's already a room called that."; stat.dataset.s = "bad";
+      field.select(); return;
+    }
+    state.rooms.push({ id:uid(), name:name, items:[blankItem()] });
     save();
+    closeAddRoom();
     if (view !== "all"){ view="all"; document.getElementById("view").value="all"; }
     render();
     var last = stage.querySelectorAll("section.room");
     if (last.length) last[last.length-1].scrollIntoView({behavior:"smooth",block:"center"});
+  }
+
+  document.getElementById("addRoom").addEventListener("click", openAddRoom);
+  document.getElementById("rAdd").addEventListener("click", addRoom);
+  document.getElementById("rCancel").addEventListener("click", closeAddRoom);
+  document.getElementById("rName").addEventListener("keydown", function(e){
+    if (e.key === "Enter"){ e.preventDefault(); addRoom(); }
   });
+  roomModal.addEventListener("click", function(e){ if (e.target === roomModal) closeAddRoom(); });
+  document.addEventListener("keydown", function(e){ if (e.key === "Escape" && !roomModal.hidden) closeAddRoom(); });
 
   /* ---------- printing ----------
      Chrome ignores @page margin boxes, so "Page X of Y" has to be built by hand:
