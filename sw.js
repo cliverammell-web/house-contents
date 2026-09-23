@@ -2,7 +2,7 @@
    Network first so a fresh upload is picked up on the next load rather than
    being masked by a cached copy. Falls back to cache after 4s or when offline. */
 
-const VERSION = 'house-contents-v15';
+const VERSION = 'house-contents-v16';
 const SHELL = [
   './',
   './index.html',
