@@ -142,6 +142,7 @@
   .totalline .tl-label{font-family:system-ui,sans-serif;font-size:.85rem;color:var(--muted)}
   .totalline .tl-value{font-weight:600;font-variant-numeric:tabular-nums}
   .sign .totalline{margin:0 0 1.8rem}
+  .totalline.searchtotal{margin-top:2rem}
   td input[type=text]{width:100%;border:1px solid transparent;background:transparent;padding:.35rem .4rem;font-family:inherit;font-size:1rem}
   td input[type=text]:hover{border-color:#e6e1d8}
   td input[type=text]:focus{border-color:var(--rule);background:#fff}
@@ -645,14 +646,17 @@
   /* ---------- search: a filtered, still-editable view across every room ---------- */
   function renderSearch(query){
     var q = norm(query);
-    var matched = 0;
+    var matched = 0, roomsHit = 0;
     state.rooms.forEach(function(room){
       var items = room.items.filter(function(i){
         if (!i.name.trim()) return false;
-        return norm(i.name).indexOf(q) !== -1 || norm(i.note).indexOf(q) !== -1 || norm(room.name).indexOf(q) !== -1;
+        // Items only — matching the room name as well turned "kitchen" into
+        // every row in the Kitchen, which buries the thing you were after.
+        return norm(i.name).indexOf(q) !== -1 || norm(i.note).indexOf(q) !== -1;
       });
       if (!items.length) return;
       matched += items.length;
+      roomsHit++;
 
       var wrap = el("section","room");
       var head = el("div","room-head");
@@ -673,7 +677,17 @@
       var p = el("p","empty");
       p.textContent = "No items match “" + query + "”.";
       stage.appendChild(p);
+      return;
     }
+
+    var tot = el("div","totalline searchtotal");
+    var l = el("span","tl-label");
+    l.textContent = "Matching “" + query + "”";
+    var v = el("span","tl-value");
+    v.textContent = matched + (matched===1 ? " item" : " items")
+      + " in " + roomsHit + (roomsHit===1 ? " room" : " rooms");
+    tot.appendChild(l); tot.appendChild(v);
+    stage.appendChild(tot);
   }
 
   function syncSearchVisibility(){
