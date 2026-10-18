@@ -21,6 +21,7 @@
     --panel:#ffffff;
     --sale:#1f6f52;
     --buyer:#8a5a12;
+    --buyer2:#b9790c;
     --uk:#1b4f8c;
     --undecided:#6f6a62;
     --away:#8b3a3a;
@@ -143,6 +144,7 @@
   select.status-sel{width:100%;font-size:.85rem}
   select.status-sel[data-s="included"]{color:var(--sale)}
   select.status-sel[data-s="buyer"]{color:var(--buyer)}
+  select.status-sel[data-s="buyer2"]{color:var(--buyer2)}
   select.status-sel[data-s="uk"]{color:var(--uk)}
   select.status-sel[data-s="undecided"]{color:var(--undecided)}
   select.status-sel[data-s="away"]{color:var(--away)}
@@ -230,10 +232,13 @@
       <option value="all">All rooms</option>
       <option value="included">Report — Included in sale</option>
       <option value="buyer">Report — Offered to the buyer</option>
+      <option value="buyer2">Report — Offered to the buyer (2)</option>
       <option value="uk">Report — Taking to the UK</option>
       <option value="undecided">Report — Undecided</option>
       <option value="away">Report — Give away or sell elsewhere</option>
     </select>
+    <label for="search" class="sr">Search items</label>
+    <input type="search" id="search" placeholder="Search items…" autocomplete="off" spellcheck="false" style="min-width:11rem">
     <button id="addRoom">Add room</button>
     <button id="options">Options</button>
     <button id="foldAll">Collapse all</button>
@@ -328,6 +333,7 @@
   var STATUSES = [
     {id:"included",   label:"Included in sale"},
     {id:"buyer",      label:"Offered to the buyer"},
+    {id:"buyer2",     label:"Offered to the buyer (2)"},
     {id:"uk",         label:"Taking to the UK"},
     {id:"undecided",  label:"Undecided"},
     {id:"away",       label:"Give away / sell elsewhere"}
@@ -362,7 +368,7 @@
     + "considered part of the property or a fixed installation should be specifically identified and "
     + "agreed in writing with the buyer before signing the reservation/arras agreement and/or the "
     + "public deed of sale.";
-  var state = null, view = "all";
+  var state = null, view = "all", searchQuery = "";
 
   /* ---------- storage: artifact host, then browser, then memory ---------- */
   var store = (function(){
@@ -385,6 +391,14 @@
   })();
 
   function uid(){ return Math.random().toString(36).slice(2,9); }
+
+  /* Case- and accent-insensitive matching, for both the fold-key lookups above
+     and the search box below. */
+  function norm(s){
+    return String(s||"")
+      .normalize("NFD").replace(/[̀-ͯ]/g,"")
+      .toLowerCase().trim();
+  }
 
   /* Which rooms are rolled up. This is a view preference for this device, so it
      lives outside the synced document — collapsing a room on the laptop shouldn't
@@ -411,7 +425,7 @@
   function blankItem(){ return { id: uid(), name:"", note:"", price:"", status:"undecided" }; }
 
   // Only these two statuses involve money changing hands.
-  function priced(status){ return status === "buyer" || status === "away"; }
+  function priced(status){ return status === "buyer" || status === "buyer2" || status === "away"; }
   function amount(item){
     if (!priced(item.status)) return 0;
     var n = parseFloat(String(item.price||"").replace(/[^0-9.,-]/g,"").replace(",","."));
@@ -442,12 +456,20 @@
 
   function render(){
     stage.innerHTML = "";
-    if (view === "all") renderAll(); else renderReport(view);
+    if (view === "all"){
+      if (norm(searchQuery)) renderSearch(searchQuery.trim());
+      else renderAll();
+    } else {
+      renderReport(view);
+    }
     renderTally();
     syncFoldAllLabel();
-    document.getElementById("hint").textContent = view === "all"
-      ? "Type in the last row of a room to start a new line. Everything saves as you go."
-      : "Printing now gives you just this list.";
+    syncSearchVisibility();
+    document.getElementById("hint").textContent = view !== "all"
+      ? "Printing now gives you just this list."
+      : norm(searchQuery)
+        ? "Showing items that match “" + searchQuery.trim() + "”. Clear the search to see everything."
+        : "Type in the last row of a room to start a new line. Everything saves as you go.";
   }
 
   function renderTally(){
@@ -613,6 +635,45 @@
       wrap.appendChild(tbl);
       stage.appendChild(wrap);
     });
+  }
+
+  /* ---------- search: a filtered, still-editable view across every room ---------- */
+  function renderSearch(query){
+    var q = norm(query);
+    var matched = 0;
+    state.rooms.forEach(function(room){
+      var items = room.items.filter(function(i){
+        if (!i.name.trim()) return false;
+        return norm(i.name).indexOf(q) !== -1 || norm(i.note).indexOf(q) !== -1 || norm(room.name).indexOf(q) !== -1;
+      });
+      if (!items.length) return;
+      matched += items.length;
+
+      var wrap = el("section","room");
+      var head = el("div","room-head");
+      var h = document.createElement("h2"); h.textContent = room.name; head.appendChild(h);
+      var c = el("span","count"); c.textContent = items.length + (items.length===1?" match":" matches");
+      head.appendChild(c);
+      wrap.appendChild(head);
+
+      var tbl = document.createElement("table");
+      tbl.innerHTML = "<thead><tr><th>Item</th><th class='note'>Note</th><th class='price'>Asking price</th><th>Where it goes</th><th class='act no-print'></th></tr></thead>";
+      var tb = document.createElement("tbody");
+      items.forEach(function(item){ tb.appendChild(itemRow(room,item)); });
+      tbl.appendChild(tb);
+      wrap.appendChild(tbl);
+      stage.appendChild(wrap);
+    });
+    if (!matched){
+      var p = el("p","empty");
+      p.textContent = "No items match “" + query + "”.";
+      stage.appendChild(p);
+    }
+  }
+
+  function syncSearchVisibility(){
+    var box = document.getElementById("search");
+    box.hidden = (view !== "all");
   }
 
   function itemRow(room,item){
@@ -794,9 +855,14 @@
       : "";
   });
 
+  document.getElementById("search").addEventListener("input", function(e){
+    searchQuery = e.target.value;
+    render();
+  });
+
   function syncFoldAllLabel(){
     var btn = document.getElementById("foldAll");
-    btn.hidden = (view !== "all");
+    btn.hidden = (view !== "all") || !!norm(searchQuery);
     if (btn.hidden) return;
     var allShut = state.rooms.length && state.rooms.every(function(r){ return isFolded(r.id); });
     btn.textContent = allShut ? "Expand all" : "Collapse all";
@@ -1185,7 +1251,7 @@
       return r.map(function(c){ return '"' + String(c).replace(/"/g,'""') + '"'; }).join(",");
     }).join("\r\n");
     var tag = only ? "-" + only : "";
-    download("house-contents" + tag + "-" + stamp() + ".csv", "\ufeff"+csv, "text/csv");
+    download("house-contents" + tag + "-" + stamp() + ".csv", "﻿"+csv, "text/csv");
   });
 
   var file = document.getElementById("file");
@@ -1379,7 +1445,7 @@
 
   document.getElementById("oSave").addEventListener("click", function(){
     var addr = document.getElementById("oAddr").value.replace(/\s+/g," ").trim();
-    if (!addr){ document.getElementById("oStat").textContent = "Enter the house address."; 
+    if (!addr){ document.getElementById("oStat").textContent = "Enter the house address.";
                 document.getElementById("oStat").dataset.s = "bad"; return; }
     var s = settings();
     s.property = addr;
