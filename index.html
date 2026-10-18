@@ -50,7 +50,7 @@
     font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
   }
   .bar .spacer{flex:1}
-  button,select,input[type=text]{
+  button,select,input[type=text],input[type=search]{
     font:inherit;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
     font-size:.9rem;
     padding:.45rem .6rem;
@@ -58,7 +58,12 @@
     border-radius:3px;
     background:var(--panel);
     color:var(--ink);
+    box-sizing:border-box;
   }
+  /* Safari/Chrome give type=search its own rounded pill chrome unless reset —
+     without this it quietly ignores the shared sizing above. The built-in ×
+     clear button is unaffected and still works. */
+  input[type=search]{-webkit-appearance:none;appearance:none;}
   button{cursor:pointer}
   button:hover{border-color:#b9b2a6}
   button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
