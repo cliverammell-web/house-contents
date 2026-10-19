@@ -175,14 +175,13 @@
   .hint{color:var(--muted);font-size:.88rem;font-style:italic;padding:.8rem 0}
   .empty{color:var(--muted);padding:.6rem .5rem;font-style:italic}
 
+  /* Matches @media print's :root, so pagination is measured at printed size. */
+  html.print-metrics{font-size:11pt}
+
   /* paginated print document, built only while printing */
   /* 210mm: the page boxes are whole sheets now and hold their own 12mm padding,
      which leaves the same 186mm of content width as before. */
   .printdoc{position:absolute;left:-20000px;top:0;width:210mm;font-size:11pt}
-  .printdoc.paged{width:auto}
-  .pagedjs_sheet{margin:0 !important}
-  /* 265mm, not the full 273mm printable area: sized to exactly fill it, sub-pixel
-     rounding spills every page onto a second sheet. The slack costs nothing. */
   /* A whole A4 sheet carrying its own 12mm margins, so the printed @page margin
      can be 0 and nothing is squeezed. Flex column rather than an absolutely
      positioned footer: Chrome re-places absolute boxes inside a fragmented
@@ -191,13 +190,6 @@
         position:relative;overflow:hidden;
         display:flex;flex-direction:column;page-break-after:always;break-after:page}
   .printdoc .page:last-child{page-break-after:auto;break-after:auto}
-  /* paged.js output: it makes its own page boxes, so our fixed-height page rules
-     below must not apply to it. */
-  .printdoc.paged .page, .printdoc.paged .page-body, .printdoc.paged .page-foot{all:unset}
-  .pagedjs_page{background:#fff}
-  .printdoc.paged .report-head{margin:0 0 .4rem}
-  .printdoc.paged .room{margin:1.4rem 0 0}
-  .printdoc.paged .sign{margin-top:2rem}
 
   /* max-height, never a fixed height: scrollHeight never reports less than the
      element's own height, so a fixed box would always measure as full. */
@@ -229,8 +221,8 @@
   }
   @media print{
     /* Margin ZERO, deliberately. Both print paths lay out whole A4 sheets that
-       already contain their own 12mm margins — paged.js builds them that way and
-       the fallback's .page carries 12mm of padding. Any outer @page margin forces
+       already contain their own 12mm margins: .page carries 12mm of padding.
+       Any outer @page margin forces
        a 297mm sheet into a shorter printable area, and the overflow is clipped:
        that is the bug where the last few rows vanished off the foot of a page.
        size:A4 is still needed so a Letter default doesn't shorten the sheet. */
@@ -384,7 +376,7 @@
   /* Shown in Options. Bump it with any change worth identifying, so you can tell
      at a glance whether a device is running the build you just uploaded or a
      cached older one. */
-  var BUILD = "2026-10-19a";
+  var BUILD = "2026-10-19c";
 
   var DEFAULT_PROPERTY = "La Colmena Famosa, Carretera de Riogordo, 29170, Colmenar, Málaga, España";
   var CURRENCIES = { GBP:{symbol:"£",locale:"en-GB"}, EUR:{symbol:"€",locale:"en-GB"}, USD:{symbol:"$",locale:"en-US"} };
@@ -1037,6 +1029,12 @@
     printDoc = el("div","printdoc");
     document.body.appendChild(printDoc);
 
+    /* Measure in the metrics we will print in. @media print sets :root to 11pt,
+       which shrinks every rem-based padding and margin; measuring at the screen's
+       16px root over-estimates each row and wastes most of a page per report.
+       Set and clear it inside this function, so nothing is ever painted with it. */
+    document.documentElement.classList.add("print-metrics");
+
     var limit = px(FILL_MM);
     var cur = newPage();
 
@@ -1132,154 +1130,29 @@
       right.textContent = "Page " + (i+1) + " of " + total;
       f.appendChild(left); f.appendChild(right);
     }
+    document.documentElement.classList.remove("print-metrics");
+
+    /* Self-check. This annex gets signed, so a short one must never reach a
+       printer quietly — which is exactly how the previous library failed. */
+    var placed = printDoc.querySelectorAll("tbody tr").length;
+    if (placed !== n){
+      teardownPrint();
+      alert("Printing stopped: the report has " + n + " items but only " + placed +
+            " were laid out, so the printout would be incomplete.\n\n" +
+            "Nothing has been printed. Please report this — Export CSV gives you " +
+            "the full list in the meantime.");
+      return false;
+    }
     return true;
   }
 
-  /* Build the report as one continuous flow — paged.js slices it into pages. */
-  function buildReportFlow(){
-    var meta = STATUSES.filter(function(s){ return s.id === view; })[0];
-    if (!meta) return null;
-    var flow = el("div","flow");
-
-    var head = el("div","report-head");
-    var h = document.createElement("h2"); h.textContent = meta.label; head.appendChild(h);
-    var prop = el("div","report-prop"); prop.textContent = "for " + propertyText(); head.appendChild(prop);
-    var withPrice = priced(view) && showAmounts();
-    var count = 0, grand = 0;
-    state.rooms.forEach(function(room){
-      room.items.forEach(function(i){
-        if (i.name.trim() && i.status === view){ count++; grand += amount(i); }
-      });
-    });
-    var m = el("div","report-meta");
-    m.textContent = count + (count===1?" item":" items")
-      + (withPrice && grand ? " · " + money(grand) : "")
-      + " · " + new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});
-    head.appendChild(m);
-    flow.appendChild(head);
-
-    state.rooms.forEach(function(room){
-      var items = room.items.filter(function(i){ return i.name.trim() && i.status === view; });
-      if (!items.length) return;
-      var sec = el("section","room report-room");
-      var rh = el("div","room-head");
-      var t = document.createElement("h2"); t.textContent = room.name; rh.appendChild(t);
-      sec.appendChild(rh);
-      var tbl = document.createElement("table");
-      var tb = document.createElement("tbody");
-      items.forEach(function(i){
-        var tr = document.createElement("tr");
-        var a = el("td","item"); a.textContent = i.name;
-        var b = el("td","note"); b.textContent = i.note || "";
-        tr.appendChild(a); tr.appendChild(b);
-        if (withPrice){
-          var c = el("td","price"); c.textContent = hasPrice(i) ? money(amount(i)) : "";
-          tr.appendChild(c);
-        }
-        tb.appendChild(tr);
-      });
-      tbl.appendChild(tb); sec.appendChild(tbl);
-      flow.appendChild(sec);
-    });
-    grand = 0;
-    state.rooms.forEach(function(room){ room.items.forEach(function(i){
-      if (i.name.trim() && i.status === view) grand += amount(i);
-    });});
-
-    var foot = el("section","sign");
-    if (withPrice && grand) foot.appendChild(totalBlock(meta.label, grand));
-    var note = el("p","important"); note.textContent = FOOTNOTE; foot.appendChild(note);
-    [["Seller’s name","Seller’s signature"],
-     ["Buyer’s name","Buyer’s signature"],
-     ["Date"]].forEach(function(pair){
-      var row = el("div","sigrow");
-      pair.forEach(function(label){
-        var f = el("div","sigfield");
-        var l = el("span","siglabel"); l.textContent = label + ":";
-        var r = el("span","sigrule");
-        f.appendChild(l); f.appendChild(r); row.appendChild(f);
-      });
-      foot.appendChild(row);
-    });
-    flow.appendChild(foot);
-    return { flow: flow, label: meta.label };
-  }
-
-  function esc(s){ return String(s).replace(/\\/g,"\\\\").replace(/"/g,'\\"'); }
-
-  /* @page margin boxes are what give us "Page X of Y" properly typeset.
-     Chrome ignores them; paged.js implements them by repaginating in the browser. */
-  function pageCSS(label){
-    return '@page{size:A4;margin:12mm;'
-      + '@bottom-left{content:"' + esc(label + " — " + propertyText().split(",")[0]) + '";'
-      +   'font-family:system-ui,sans-serif;font-size:8.5pt;color:#6f6a62}'
-      + '@bottom-right{content:"Page " counter(page) " of " counter(pages);'
-      +   'font-family:system-ui,sans-serif;font-size:8.5pt;color:#6f6a62}}'
-      + '.pagedjs_page .sign{break-inside:avoid}'
-      + '.pagedjs_page .room-head{break-after:avoid}'
-      + '.pagedjs_page tr{break-inside:avoid}';
-  }
-
-  /* The UMD bundle registers itself as window.PagedModule; older builds and the
-     polyfill use window.Paged. Accept either. */
-  function pagedLib(){
-    var g = window.PagedModule || window.Paged;
-    return (g && g.Previewer) ? g : null;
-  }
-
-  var pagedLoading = null;
-  function loadPaged(){
-    if (pagedLib()) return Promise.resolve(true);
-    if (pagedLoading) return pagedLoading;
-    pagedLoading = new Promise(function(resolve){
-      var done = false;
-      function finish(){ if (done) return; done = true; resolve(!!pagedLib()); }
-      var s = document.createElement("script");
-      s.src = "pagedjs.min.js";
-      s.onload  = finish;
-      s.onerror = function(){ console.warn("pagedjs.min.js failed to load"); finish(); };
-      document.head.appendChild(s);
-      setTimeout(function(){
-        if (!done) console.warn("pagedjs.min.js timed out; using the built-in paginator");
-        finish();
-      }, 5000);
-    });
-    return pagedLoading;
-  }
-
-  function printViaPaged(){
-    var built = buildReportFlow();
-    if (!built) return Promise.resolve(false);
-
-    return loadPaged().then(function(ok){
-      if (!ok) return false;
-      printDoc = el("div","printdoc paged");
-      document.body.appendChild(printDoc);
-      var blob = new Blob([pageCSS(built.label)], { type:"text/css" });
-      var cssUrl = URL.createObjectURL(blob);
-      var prev = new (pagedLib().Previewer)();
-      return prev.preview(built.flow.innerHTML, [cssUrl], printDoc).then(function(){
-        URL.revokeObjectURL(cssUrl);
-        return true;
-      }).catch(function(err){
-        console.warn("paged.js failed, falling back:", err);
-        URL.revokeObjectURL(cssUrl);
-        teardownPrint();
-        return false;
-      });
-    });
-  }
-
+  /* Reports are paginated by buildPrintPages() above. paged.js used to do this,
+     but it silently dropped table rows at page breaks — a 33-item report printed
+     30, with the lost rows absent from the PDF rather than clipped. This
+     paginator is deterministic and measured against real PDFs. */
   document.getElementById("print").addEventListener("click", function(){
-    var btn = this;
-    if (view === "all"){ window.print(); return; }
-    btn.disabled = true; btn.textContent = "Preparing…";
-    printViaPaged().then(function(done){
-      if (!done && buildPrintPages()) { /* hand-rolled fallback */ }
-      document.body.classList.add("printing");
-      btn.disabled = false; btn.textContent = "Print";
-      window.print();
-    });
+    if (view !== "all" && buildPrintPages()) document.body.classList.add("printing");
+    window.print();
   });
 
   window.addEventListener("afterprint", teardownPrint);
