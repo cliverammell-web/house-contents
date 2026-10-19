@@ -97,6 +97,8 @@
   .sheet label.check{display:flex;align-items:center;gap:.5rem;font-size:.92rem;
         font-family:inherit;color:var(--ink);margin:1.1rem 0 0;text-transform:none}
   .sheet label.check input{width:auto}
+  .sheet .buildstamp{font-family:system-ui,sans-serif;font-size:.78rem;color:var(--muted);
+        margin:1.1rem 0 0;padding-top:.6rem;border-top:1px solid var(--rule)}
   .sheet .mstat{font-family:system-ui,sans-serif;font-size:.85rem;color:var(--muted);margin:1rem 0 .2rem;min-height:1.2em}
   .sheet .mstat[data-s="bad"]{color:var(--away)}
   .sheet .mstat[data-s="ok"]{color:var(--sale)}
@@ -327,6 +329,7 @@
     </select>
     <label class="check"><input type="checkbox" id="oAmounts"> Show prices and totals on reports</label>
     <p class="mstat" id="oStat"></p>
+    <p class="buildstamp">Version <span id="oBuild"></span></p>
     <div class="mrow">
       <button id="oSave" class="primary">Save</button>
       <span class="spacer"></span>
@@ -378,6 +381,11 @@
   // Shown on every report. Edit here if the wording needs to change.
   // Defaults for a fresh install. Once saved they live in the synced document,
   // so changing them on one device changes them everywhere.
+  /* Shown in Options. Bump it with any change worth identifying, so you can tell
+     at a glance whether a device is running the build you just uploaded or a
+     cached older one. */
+  var BUILD = "2026-10-19a";
+
   var DEFAULT_PROPERTY = "La Colmena Famosa, Carretera de Riogordo, 29170, Colmenar, Málaga, España";
   var CURRENCIES = { GBP:{symbol:"£",locale:"en-GB"}, EUR:{symbol:"€",locale:"en-GB"}, USD:{symbol:"$",locale:"en-US"} };
 
@@ -1477,6 +1485,7 @@
     document.getElementById("oCur").value = s.currency;
     document.getElementById("oAmounts").checked = s.showAmounts;
     document.getElementById("oStat").textContent = "";
+    document.getElementById("oBuild").textContent = BUILD;
     optModal.hidden = false;
     document.getElementById("oAddr").focus();
   }
