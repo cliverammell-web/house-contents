@@ -175,7 +175,15 @@
 
   /* paginated print document, built only while printing */
   .printdoc{position:absolute;left:-20000px;top:0;width:186mm;font-size:11pt}
-  .printdoc .page{height:273mm;position:relative;overflow:hidden;page-break-after:always;break-after:page}
+  /* 265mm, not the full 273mm printable area: sized to exactly fill it, sub-pixel
+     rounding spills every page onto a second sheet. The slack costs nothing. */
+  /* 265mm, not the full 273mm printable area: sized to exactly fill it, sub-pixel
+     rounding spills every page onto a second sheet. The slack costs nothing.
+     Flex column rather than an absolutely-positioned footer: Chrome re-places
+     absolute boxes inside a fragmented container, which put every footer alone
+     on a sheet of its own and doubled the page count. */
+  .printdoc .page{height:265mm;position:relative;overflow:hidden;
+        display:flex;flex-direction:column;page-break-after:always;break-after:page}
   .printdoc .page:last-child{page-break-after:auto;break-after:auto}
   /* paged.js output: it makes its own page boxes, so our fixed-height page rules
      below must not apply to it. */
@@ -188,8 +196,8 @@
   /* max-height, never a fixed height: scrollHeight never reports less than the
      element's own height, so a fixed box would always measure as full. */
   .printdoc .page-body{overflow:visible}
-  .printdoc .page-body{overflow:hidden;max-height:255mm}
-  .printdoc .page-foot{position:absolute;left:0;right:0;bottom:0;height:10mm;background:#fff;
+  .printdoc .page-body{overflow:hidden;flex:1 1 auto;min-height:0}
+  .printdoc .page-foot{flex:0 0 auto;height:10mm;background:#fff;box-sizing:border-box;
         display:flex;align-items:flex-end;justify-content:space-between;
         font-family:system-ui,sans-serif;font-size:8.5pt;color:var(--muted);
         border-top:1px solid var(--rule);padding-top:2mm}
@@ -201,6 +209,10 @@
     body.printing > header,
     body.printing > main{display:none !important}
     body.printing .printdoc{position:static;left:auto;top:auto}
+    /* The screen rule body{padding:0 0 5rem} survives into print and adds ~19mm
+       below the last page box — enough to tip each full page onto a second sheet.
+       Page boxes carry their own margins, so the body must contribute nothing. */
+    body.printing{margin:0;padding:0}
   }
 
   @media (max-width:640px){
@@ -210,7 +222,10 @@
     td.status{width:33%}
   }
   @media print{
-    @page{margin:12mm}
+    /* size matters as much as margin: the fallback's page boxes are cut for A4,
+       and on a Letter default (shorter by 18mm) the bottom of every page falls
+       outside the printable area and is silently dropped. */
+    @page{size:A4;margin:12mm}
     :root{font-size:11pt}          /* rem sizes now scale with the printed page */
     body{background:#fff;font-size:1rem}
       .bar,.no-print,td.act,th.act{display:none !important}
@@ -968,7 +983,7 @@
      lay the report out into fixed-height A4 pages and stamp a footer on each. */
 
   var PAGE_H_MM = 273;            // A4 297mm less the 12mm @page margins
-  var FILL_MM   = 243;            // how much of that we'll fill: leaves the footer
+  var FILL_MM   = 236;            // how much of that we'll fill: leaves the footer
                                   // strip plus slack, since the off-screen measurement
                                   // and the printer's own layout never agree exactly.
                                   // Lower this if a line still collides with the footer.
@@ -985,16 +1000,19 @@
   function newPage(){
     var p = el("div","page");
     var body = el("div","page-body");
+    var flow = el("div","page-flow");   // auto height: this is what we measure
     var foot = el("div","page-foot");
+    body.appendChild(flow);
     p.appendChild(body); p.appendChild(foot);
     printDoc.appendChild(p);
-    return { page:p, body:body, foot:foot };
+    return { page:p, body:flow, foot:foot };
   }
 
   function fits(pg, limit){
-    // scrollHeight, not getBoundingClientRect: the box itself is a fixed page height,
-    // so only the content height tells us whether we've overflowed.
-    return pg.body.scrollHeight <= limit;
+    // Measure the auto-height flow, never the body: .page-body is stretched by the
+    // page's flex layout, and scrollHeight never reports less than an element's own
+    // height — measuring it would call every page full after a single row.
+    return pg.body.getBoundingClientRect().height <= limit;
   }
 
   function buildPrintPages(){
