@@ -23,6 +23,7 @@
     --buyer:#8a5a12;
     --buyer2:#b9790c;
     --uk:#1b4f8c;
+    --car:#0f7a6e;
     --undecided:#6f6a62;
     --away:#8b3a3a;
     --focus:#1b4f8c;
@@ -154,6 +155,7 @@
   select.status-sel[data-s="buyer"]{color:var(--buyer)}
   select.status-sel[data-s="buyer2"]{color:var(--buyer2)}
   select.status-sel[data-s="uk"]{color:var(--uk)}
+  select.status-sel[data-s="car"]{color:var(--car)}
   select.status-sel[data-s="undecided"]{color:var(--undecided)}
   select.status-sel[data-s="away"]{color:var(--away)}
 
@@ -256,6 +258,7 @@
       <option value="buyer">Report — Offered to the buyer</option>
       <option value="buyer2">Report — Offered to the buyer (2)</option>
       <option value="uk">Report — Taking to the UK</option>
+      <option value="car">Report — Take in car to UK</option>
       <option value="undecided">Report — Undecided</option>
       <option value="away">Report — Give away or sell elsewhere</option>
     </select>
@@ -354,13 +357,21 @@
   "use strict";
 
   var STATUSES = [
-    {id:"included",   label:"Included in sale"},
-    {id:"buyer",      label:"Offered to the buyer"},
-    {id:"buyer2",     label:"Offered to the buyer (2)"},
+    // contract:true -> the report is an annex the buyer and seller sign, so it
+    // carries the fixtures caveat and signature lines. The rest are our own
+    // working lists and get neither.
+    {id:"included",   label:"Included in sale",          contract:true},
+    {id:"buyer",      label:"Offered to the buyer",      contract:true},
+    {id:"buyer2",     label:"Offered to the buyer (2)",  contract:true},
     {id:"uk",         label:"Taking to the UK"},
+    {id:"car",        label:"Take in car to UK"},
     {id:"undecided",  label:"Undecided"},
     {id:"away",       label:"Give away / sell elsewhere"}
   ];
+  function isContract(statusId){
+    var s = STATUSES.filter(function(x){ return x.id === statusId; })[0];
+    return !!(s && s.contract);
+  }
   var KEY = "house-contents-v1";
   var SYNC_APP   = "house-contents";        // must be in the worker's ALLOWED_KEYS
   var K_URL      = "hc_sync_url";
@@ -376,7 +387,7 @@
   /* Shown in Options. Bump it with any change worth identifying, so you can tell
      at a glance whether a device is running the build you just uploaded or a
      cached older one. */
-  var BUILD = "2026-10-19c";
+  var BUILD = "2026-10-20b";
 
   var DEFAULT_PROPERTY = "La Colmena Famosa, Carretera de Riogordo, 29170, Colmenar, Málaga, España";
   var CURRENCIES = { GBP:{symbol:"£",locale:"en-GB"}, EUR:{symbol:"€",locale:"en-GB"}, USD:{symbol:"$",locale:"en-US"} };
@@ -853,6 +864,9 @@
       + " · " + new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});
 
     // Contract annex furniture: the caveat about fixtures, then somewhere to sign.
+    // Only on the reports that actually get signed.
+    if (!isContract(statusId)) return;
+
     var foot = el("section","sign");
     var note = el("p","important");
     note.textContent = FOOTNOTE;
@@ -1096,27 +1110,35 @@
       });
     });
 
-    // the total, caveat and signature block, kept whole
-    var foot = el("section","sign");
-    if (withPrice && grand) foot.appendChild(totalBlock(meta.label, grand));
-    var note = el("p","important"); note.textContent = FOOTNOTE; foot.appendChild(note);
-    [["Seller’s name","Seller’s signature"],
-     ["Buyer’s name","Buyer’s signature"],
-     ["Date"]].forEach(function(pair){
-      var row = el("div","sigrow");
-      pair.forEach(function(label){
-        var f = el("div","sigfield");
-        var l = el("span","siglabel"); l.textContent = label + ":";
-        var r = el("span","sigrule");
-        f.appendChild(l); f.appendChild(r); row.appendChild(f);
-      });
-      foot.appendChild(row);
-    });
-    cur.body.appendChild(foot);
-    if (!fits(cur, limit)){
-      cur.body.removeChild(foot);
-      cur = newPage();
+    /* The total, and on a contract annex the caveat and signature lines, kept
+       whole. A working list still gets its total — only the signing furniture
+       is dropped — so this section is skipped only when it would be empty. */
+    var signing = isContract(view);
+    var foot = null;
+    if ((withPrice && grand) || signing){
+      foot = el("section","sign");
+      if (withPrice && grand) foot.appendChild(totalBlock(meta.label, grand));
+      if (signing){
+        var note = el("p","important"); note.textContent = FOOTNOTE; foot.appendChild(note);
+        [["Seller’s name","Seller’s signature"],
+         ["Buyer’s name","Buyer’s signature"],
+         ["Date"]].forEach(function(pair){
+          var row = el("div","sigrow");
+          pair.forEach(function(label){
+            var f = el("div","sigfield");
+            var l = el("span","siglabel"); l.textContent = label + ":";
+            var r = el("span","sigrule");
+            f.appendChild(l); f.appendChild(r); row.appendChild(f);
+          });
+          foot.appendChild(row);
+        });
+      }
       cur.body.appendChild(foot);
+      if (!fits(cur, limit)){
+        cur.body.removeChild(foot);
+        cur = newPage();
+        cur.body.appendChild(foot);
+      }
     }
 
     // stamp the footers now the total is known
