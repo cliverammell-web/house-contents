@@ -27,6 +27,8 @@
     --undecided:#6f6a62;
     --away:#8b3a3a;
     --friends:#6b4a8c;
+    --cheryl:#9c3f6b;
+    --michelle:#2f6090;
     --focus:#1b4f8c;
   }
   *{box-sizing:border-box}
@@ -160,6 +162,8 @@
   select.status-sel[data-s="undecided"]{color:var(--undecided)}
   select.status-sel[data-s="away"]{color:var(--away)}
   select.status-sel[data-s="friends"]{color:var(--friends)}
+  select.status-sel[data-s="cheryl"]{color:var(--cheryl)}
+  select.status-sel[data-s="michelle"]{color:var(--michelle)}
 
   .tally{display:flex;flex-wrap:wrap;gap:1.1rem;padding:.9rem 0;font-family:system-ui,sans-serif;font-size:.85rem;color:var(--muted)}
   .tally b{color:var(--ink);font-weight:600}
@@ -276,7 +280,10 @@
       <option value="undecided">Report — Undecided</option>
       <option value="away">Report — Give away or sell elsewhere</option>
       <option value="friends">Report — Sell to friends</option>
+      <option value="cheryl">Report — Sold to Cheryl</option>
+      <option value="michelle">Report — Sold to Michelle</option>
       <option value="uksum">Report — Items to UK summarised</option>
+      <option value="uksumall">Report — Total items to UK summarised</option>
     </select>
     <label for="search" class="sr">Search items</label>
     <input type="search" id="search" placeholder="Search items…" autocomplete="off" spellcheck="false" style="min-width:11rem">
@@ -386,7 +393,9 @@
     {id:"car",        label:"Take in car to UK"},
     {id:"undecided",  label:"Undecided"},
     {id:"away",       label:"Give away / sell elsewhere"},
-    {id:"friends",    label:"Sell to friends"}
+    {id:"friends",    label:"Sell to friends"},
+    {id:"cheryl",     label:"Sold to Cheryl"},
+    {id:"michelle",   label:"Sold to Michelle"}
   ];
   function isContract(statusId){
     var s = STATUSES.filter(function(x){ return x.id === statusId; })[0];
@@ -407,13 +416,13 @@
   /* Shown in Options. Bump it with any change worth identifying, so you can tell
      at a glance whether a device is running the build you just uploaded or a
      cached older one. */
-  var BUILD = "2026-11-03d";
+  var BUILD = "2026-11-08a";
 
   var DEFAULT_PROPERTY = "La Colmena Famosa, Carretera de Riogordo, 29170, Colmenar, Málaga, España";
   var DEFAULT_DESTINATION = "Pandoras Box, Denstead Lane, Chartham Hatch, Kent, CT4 7NJ";
 
   /* Views that are about moving goods to the UK, and so carry the "to …" line. */
-  var DESTINATION_VIEWS = ["uk","car","uksum"];
+  var DESTINATION_VIEWS = ["uk","car","uksum","uksumall"];
   function showsDestination(viewId){ return DESTINATION_VIEWS.indexOf(viewId) !== -1; }
 
   /* Property line, then the destination line on the UK reports. */
@@ -503,9 +512,8 @@
   function blankItem(){ return { id: uid(), name:"", note:"", price:"", status:"undecided" }; }
 
   // Only these two statuses involve money changing hands.
-  function priced(status){
-    return status === "buyer" || status === "buyer2" || status === "away" || status === "friends";
-  }
+  var PRICED = ["buyer","buyer2","away","friends","cheryl","michelle"];
+  function priced(status){ return PRICED.indexOf(status) !== -1; }
   function amount(item){
     if (!priced(item.status)) return 0;
     var n = parseFloat(String(item.price||"").replace(/[^0-9.,-]/g,"").replace(",","."));
@@ -539,8 +547,8 @@
     if (view === "all"){
       if (norm(searchQuery)) renderSearch(searchQuery.trim());
       else renderAll();
-    } else if (view === "uksum"){
-      renderUkSummary();
+    } else if (isSummaryView(view)){
+      renderUkSummary(view);
     } else {
       renderReport(view);
     }
@@ -862,7 +870,13 @@
      marked for the UK and groups them by subject with a count, for a customs
      inventory where "34 pictures" is more use than 34 separate lines. */
 
-  var UKSUM_STATUSES = ["uk"];           // the "Taking to the UK" list only, not the car load
+  /* Each summary view names its own title and the statuses it draws from, so
+     adding another is one line here plus an <option>. */
+  var SUMMARY_VIEWS = {
+    uksum:    { title:"Items to UK summarised",       statuses:["uk"] },
+    uksumall: { title:"Total items to UK summarised", statuses:["uk","car"] }
+  };
+  function isSummaryView(v){ return Object.prototype.hasOwnProperty.call(SUMMARY_VIEWS, v); }
 
   // First pattern that matches wins, so the specific ones come first.
   var SUBJECTS = [
@@ -913,12 +927,12 @@
     return SUBJECT_OTHER;
   }
 
-  function ukSummary(){
+  function ukSummary(statuses){
     var byLabel = {}, entries = 0, units = 0;
     state.rooms.forEach(function(room){
       room.items.forEach(function(i){
         if (!i.name.trim()) return;
-        if (UKSUM_STATUSES.indexOf(i.status) === -1) return;
+        if (statuses.indexOf(i.status) === -1) return;
         var label = subjectOf(i.name), q = quantityOf(i.name);
         if (!byLabel[label]) byLabel[label] = { label:label, total:0, names:[] };
         byLabel[label].total += q;
@@ -932,9 +946,9 @@
     return { groups: groups, entries: entries, units: units };
   }
 
-  function summaryHead(sum){
+  function summaryHead(sum, title){
     var head = el("div","report-head");
-    var h = document.createElement("h2"); h.textContent = "Items to UK summarised";
+    var h = document.createElement("h2"); h.textContent = title;
     head.appendChild(h);
     addressLines(head);
     var m = el("div","report-meta");
@@ -956,9 +970,10 @@
     return row;
   }
 
-  function renderUkSummary(){
-    var sum = ukSummary();
-    stage.appendChild(summaryHead(sum));
+  function renderUkSummary(viewId){
+    var cfg = SUMMARY_VIEWS[viewId];
+    var sum = ukSummary(cfg.statuses);
+    stage.appendChild(summaryHead(sum, cfg.title));
     if (!sum.entries){
       var p = el("p","empty");
       p.textContent = "Nothing is marked for the UK yet.";
@@ -1192,15 +1207,16 @@
 
   /* The summary has no rooms or item rows, so it paginates on its own terms:
      one group per line, broken between groups. */
-  function buildSummaryPages(){
-    var sum = ukSummary();
+  function buildSummaryPages(viewId){
+    var cfg = SUMMARY_VIEWS[viewId];
+    var sum = ukSummary(cfg.statuses);
     printDoc = el("div","printdoc");
     document.body.appendChild(printDoc);
     document.documentElement.classList.add("print-metrics");
 
     var limit = px(FILL_MM);
     var cur = newPage();
-    cur.body.appendChild(summaryHead(sum));
+    cur.body.appendChild(summaryHead(sum, cfg.title));
 
     var box = el("section","sumlist");
     cur.body.appendChild(box);
@@ -1221,7 +1237,7 @@
     for (var i=0;i<pages.length;i++){
       var f = pages[i].querySelector(".page-foot");
       var left = el("span","foot-left");
-      left.textContent = "Items to UK summarised — " + propertyText().split(",")[0];
+      left.textContent = cfg.title + " — " + propertyText().split(",")[0];
       var right = el("span","foot-right");
       right.textContent = "Page " + (i+1) + " of " + pages.length;
       f.appendChild(left); f.appendChild(right);
@@ -1239,7 +1255,7 @@
   }
 
   function buildPrintPages(){
-    if (view === "uksum") return buildSummaryPages();
+    if (isSummaryView(view)) return buildSummaryPages(view);
     var meta = STATUSES.filter(function(s){ return s.id === view; })[0];
     if (!meta) return false;                       // only reports are paginated
 
